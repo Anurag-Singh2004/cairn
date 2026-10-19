@@ -145,3 +145,34 @@
 **Gate G2 (Internal networks):** ✅ GREEN — N×N matrix on T1 shows only allowed edges, 0 deviations, zero external egress.
 
 **Next:** M4 — Auditor and probes (L1 cross-session probe, L3 token limit probe, L4 side channel timing probe, canary scanning, attestation collector)
+
+---
+
+## 19 Oct 2026 18:09 IST — M4: Gold-Team Auditor and Probes
+
+**Done:**
+- Created `cairn.auditor.l1_leak`: L1 cross-session and shared storage leak probe (positive control on T0)
+- Created `cairn.auditor.l3_quota`: L3 token call limit (max_calls) and input size cap (>16 KB) enforcement probe
+- Created `cairn.auditor.l4_timing`: L4 side-channel timing probe measuring cross-session prefix cache timing leakage using Welch's t-test with integer representation per DEC-19
+- Created `cairn.auditor.canary`: Canary scanner checking emitted events and file directories for foreign/unregistered canaries
+- Created `cairn.auditor.attestation`: Attestation collector gathering container image digests, config sha256s, and emitting `attestation.manifest`
+
+**Verified by:**
+- `make lint` → exit 0 (Ruff clean, 60 files formatted)
+- `make test` → exit 0 (31 passed in 0.50s)
+- `make test-e2e` → exit 0 (4 passed in 2.68s)
+- Negative control on T0:
+  - L1 probe finds the leak planted in `/shared` in T0 (`leak_detected = True`, `mechanism = "shared_storage_leak"`)
+  - L4 probe detects prefix cache timing leakage in T0 (positive latency delta, Welch's t-statistic > 2.878, p < 0.01)
+- Positive controls on T1:
+  - L1 probe confirms zero leak in T1 (`leak_detected = False`)
+  - L3 probe confirms token call budget and size cap enforcement (`budget_enforced = True`, `size_cap_enforced = True`)
+  - L4 probe confirms timing distribution is flat in T1 (`delta_ms = 0`, p >= 0.01)
+- Canary scan confirms clean logs and detects injected foreign tokens
+- Attestation collector freezes manifest and emits `attestation.manifest` into evidence store
+
+**Decisions:** (followed DEC-10, DEC-12, DEC-14, DEC-17, DEC-19)
+
+**Gate G3 (Auditor negative controls):** ✅ GREEN — L1 probe finds the leak planted by Blue in T0; L4 probe detects prefix cache timing leakage in T0 (p < 0.01).
+
+**Next:** M5 — Validity Engine and Certificates (I1-I9 evaluation, pure function from events, status, receipts generation, cairn verify integration)

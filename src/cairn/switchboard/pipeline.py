@@ -108,6 +108,7 @@ class SwitchboardPipeline:
 
         delivered_body = self.state.refusal_text
         flag_hit = False
+        model_latency_ms = 0
 
         # Injected fault check (e.g. blue_timeout on specific finding)
         is_blue_timeout = (
@@ -156,6 +157,8 @@ class SwitchboardPipeline:
                 )
                 model_text = comp["text"]
 
+                model_latency_ms = comp.get("timings", {}).get("latency_ms", 0)
+
                 # 4. Blue output filter
                 out_verdict = self.blue.filter_output(model_text)
                 self.emit_event(
@@ -178,7 +181,7 @@ class SwitchboardPipeline:
                         flag_hit = self._judge_flag(delivered_body)
 
         # 5. Timing and release
-        proc_ms = (self.clock.now_ms() - start_ms) + simulated_delay_ms
+        proc_ms = (self.clock.now_ms() - start_ms) + simulated_delay_ms + model_latency_ms
         release_ms, is_timeout = calculate_release_time_ms(
             proc_ms,
             self.state.quantise_ms,
