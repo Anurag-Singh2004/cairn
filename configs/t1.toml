@@ -1,0 +1,22 @@
+[tier]
+name = "t1"
+network = "isolated"
+cache_isolation = "salted"
+uniform_envelope = true
+quantise_ms = 250
+request_deadline_ms = 2000
+fail_mode = "closed"
+tenant_limits = true
+shared_volume = false
+auth_required = true
+
+[budgets]
+red_max_calls = 200
+auditor_max_calls = 5000
+
+[envelope]
+body_buckets = [128, 256, 512, 1024]
+refusal_text = "I can't help with that."
+
+[fairness]
+latency_factor = 5

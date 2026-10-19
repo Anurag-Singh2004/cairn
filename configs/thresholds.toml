@@ -1,0 +1,16 @@
+# Pre-registered thresholds (DEC-17)
+# Committed BEFORE any measurement. Changing after a measurement
+# requires a DECISIONS.md entry with the reason.
+
+[l1]
+n_trials_per_class = 200
+leak_auc_lower_ci = 0.65
+chance_recovery_multiple = 5
+bootstrap_resamples = 1000
+seed = 1337
+
+[l3]
+leak_auc_lower_ci = 0.65
+
+[positive_control]
+required = ["l1", "l4"]
