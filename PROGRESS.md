@@ -76,3 +76,36 @@
 - Pipeline in-process (SimEngine, blue, red, switchboard) is next
 
 **Next:** M2 — In-process pipeline (SimEngine, Blue guard, Red agent, Switchboard logic, envelope, release timing, fixtures)
+
+---
+
+## 19 Oct 2026 17:51 IST — M2: In-process pipeline
+
+**Done:**
+- Created `cairn.model.sim_engine`: deterministic SimEngine with token-level prefix caching, latency calibration, and SIMULATED marker per REQ-G6
+- Created `cairn.tenants.blue.guard`: BlueGuard with regex input/output filters, canary leak detection, and standardized reason codes
+- Created `cairn.tenants.red.agent`: RedAgent runner supporting in-process and async HTTP submission
+- Created `cairn.switchboard.envelope`: Uniform response envelope with space padding to configurable buckets per DEC-13
+- Created `cairn.switchboard.release`: Quantized release timing (Δ * ceil(proc_ms / Δ)) and deadline timeout enforcement
+- Created `cairn.switchboard.session`: Session and token budget tracking, cache namespace derivation (shared vs salted)
+- Created `cairn.switchboard.state`: Switchboard configuration and run state management
+- Created `cairn.switchboard.pipeline`: Full request processing pipeline with fail-closed semantics, ground-truth judge (plain + hex secret flag), and event emission
+- Created `cairn.switchboard.app`: FastAPI ASGI application with `/v1/submit`, `/v1/probe/complete`, `/v1/status`, `/v1/reveal/{role}`, and admin endpoints
+- Created data fixtures: `data/sim_rules.json`, `data/policies/demo_blue.json`, `data/attack_packs/demo.json` (~12 synthetic attacks)
+
+**Verified by:**
+- `make lint` → exit 0 (Ruff check clean, 44 files properly formatted)
+- `make test` → exit 0 (27 passed in 0.45s)
+- Request-path tested: reproduces allow, input-block, output-block, model-refusal, and evasive bypass
+- Uniformity test: envelopes for input-block, model-refusal, and output-block are byte-identical in shape (body padded to 128 chars, bucket=128)
+- Release test: verified quantized release timing multiple of Δ (120ms delay released at 250ms), over-deadline releases refusal + `infra.timeout`
+- AuthZ negative controls: no token -> 401, expired token -> 401, wrong run -> 401, calls outside RUNNING -> 403, reveal before Certified -> 403
+- SimEngine prefix cache timing verified: shared namespace exhibits cache hits and lower latency on identical prefixes; salted namespace yields zero cross-session cache hits
+- Full red attack pack (12 attacks) executed against Switchboard pipeline in-process; generated events validated cryptographic hash chain on SQLite EvidenceStore
+
+**Decisions:** (none new; followed DEC-5, DEC-8, DEC-10, DEC-13, DEC-15)
+
+**Known gaps:**
+- Containerization and Docker Compose setup (T0/T1) is next (M3)
+
+**Next:** M3 — Containers, tiers, doctor (compose/Dockerfile, compose.t0.yml, compose.t1.yml, UDS admin, netprobe, matrix, cairn doctor)
