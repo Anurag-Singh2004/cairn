@@ -29,13 +29,14 @@ build:
 	docker compose -f compose/compose.t1.yml build
 
 up-t0:
-	docker compose -f compose/compose.t0.yml up -d
+	docker compose -p cairn-t0 -f compose/compose.t0.yml up -d
 
 up-t1:
-	docker compose -f compose/compose.t1.yml up -d
+	docker compose -p cairn-t1 -f compose/compose.t1.yml up -d
 
 down:
-	docker compose -f compose/compose.t0.yml -f compose/compose.t1.yml down --remove-orphans 2>/dev/null; true
+	docker compose -p cairn-t0 -f compose/compose.t0.yml down --remove-orphans 2>/dev/null; true
+	docker compose -p cairn-t1 -f compose/compose.t1.yml down --remove-orphans 2>/dev/null; true
 
 doctor:
 	$(PY) -m cairn.cli doctor --tier $(TIER)

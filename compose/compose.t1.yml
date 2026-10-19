@@ -1,5 +1,4 @@
-# CAIRN Tier T1: Hardened OCI per context.md §7.2
-# Isolated internal networks, no published ports, read-only rootfs, dropped capabilities.
+name: cairn-t1
 
 services:
   switchboard:

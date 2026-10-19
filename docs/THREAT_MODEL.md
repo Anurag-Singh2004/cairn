@@ -92,7 +92,7 @@ CAIRN enforces layered controls spanning container virtualization, network topol
 | **G1: Network Boundary Confinement** | Isolated internal bridge networks; no inter-tenant edges. | Linux network namespace integrity; correct Docker network configuration. | Fails if host kernel routing leaks packets or bridge misconfiguration attaches Red directly to Blue/Model. Audited by Matrix probe (I2 violation $\rightarrow$ `QUARANTINED`). |
 | **G2: Side-Channel Timing Invariance** | Quantized release timing $\Delta \times \lceil t / \Delta \rceil$. | System load allows responses within deadline $T_{\text{deadline}}$. | Fails if excessive noisy-neighbor CPU load delays release past deadline ($t > T$). Enforces fail-closed: releases generic refusal and records `infra.timeout` (I5/I9). |
 | **G3: Side-Channel Length Invariance** | Uniform envelope padding into pre-defined power-of-two buckets. | Response length does not exceed maximum bucket cap. | Fails if uninspected text or raw errors bypass envelope generator. Audited by L3 probe (AUC lower CI $> 0.65 \rightarrow$ `LEAK_DETECTED`). |
-| **G4: Cross-Session Prefix Isolation** | Cryptographic salt per session; isolated namespace trie. | Salt randomness $H(\text{salt} \parallel \text{sess})$ collision resistance. | Fails if shared cache mode is enabled (T0) or namespace derivation collides. Audited by L4 probe ($p < 0.01 \rightarrow$ `LEAK_DETECTED`). |
+| **G4: Cross-Session Prefix Isolation** | Cryptographic salt per session; isolated namespace trie. | Salt randomness $H(\text{salt} \parallel \text{sess})$ collision resistance. | Fails if shared cache mode is enabled (T0) or namespace derivation collides. Audited by L1 probe (AUC lower CI $> 0.65 \rightarrow$ `LEAK_DETECTED`). |
 | **G5: Audit Evidence Non-Repudiation** | Canonical JSON, SHA-256 chain, RFC 6962 Merkle tree, Ed25519 signatures. | Ed25519 private key secrecy (`keys/ref_ed25519.pem` permission 0600). | Fails if private key is stolen or hash collision found in SHA-256. Any single-byte modification invalidates Merkle proof or signature (`cairn verify` fails with exit code 1). |
 
 ---
@@ -113,15 +113,16 @@ CAIRN enforces layered controls spanning container virtualization, network topol
 As recorded in `configs/thresholds.toml`:
 
 ```toml
-[probes.l1]
-leak_threshold = 0
+[l1]
+n_trials_per_class = 200
+leak_auc_lower_ci = 0.65
+chance_recovery_multiple = 5
+bootstrap_resamples = 1000
+seed = 1337
 
-[probes.l3]
-metric = "auc_lower_ci"
-threshold = 0.65
-resamples = 1000
+[l3]
+leak_auc_lower_ci = 0.65
 
-[probes.l4]
-alpha = 0.01
-min_samples = 10
+[positive_control]
+required = ["l1", "l4"]
 ```

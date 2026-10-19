@@ -62,7 +62,7 @@ def check_compose_available() -> tuple[bool, str]:
 def compose_up(tier: str, build: bool = False, timeout_s: float = 60.0) -> None:
     """Start services for the specified tier."""
     compose_file = get_compose_file(tier)
-    cmd = ["docker", "compose", "-f", str(compose_file), "up", "-d"]
+    cmd = ["docker", "compose", "-p", f"cairn-{tier}", "-f", str(compose_file), "up", "-d"]
     if build:
         cmd.append("--build")
     proc = subprocess.run(
@@ -79,7 +79,16 @@ def compose_up(tier: str, build: bool = False, timeout_s: float = 60.0) -> None:
 def compose_down(tier: str, timeout_s: float = 30.0) -> None:
     """Tear down services for the specified tier."""
     compose_file = get_compose_file(tier)
-    cmd = ["docker", "compose", "-f", str(compose_file), "down", "--remove-orphans"]
+    cmd = [
+        "docker",
+        "compose",
+        "-p",
+        f"cairn-{tier}",
+        "-f",
+        str(compose_file),
+        "down",
+        "--remove-orphans",
+    ]
     subprocess.run(
         cmd,
         capture_output=True,
@@ -98,7 +107,18 @@ def compose_exec(
 ) -> tuple[int, str, str]:
     """Execute command inside a running service container."""
     compose_file = get_compose_file(tier)
-    full_cmd = ["docker", "compose", "-f", str(compose_file), "exec", "-T", service, *cmd]
+    full_cmd = [
+        "docker",
+        "compose",
+        "-p",
+        f"cairn-{tier}",
+        "-f",
+        str(compose_file),
+        "exec",
+        "-T",
+        service,
+        *cmd,
+    ]
     proc = subprocess.run(
         full_cmd,
         input=input_str,
@@ -113,7 +133,17 @@ def compose_exec(
 def inspect_service_container(tier: str, service: str) -> dict[str, Any]:
     """Inspect low-level container config via docker inspect."""
     compose_file = get_compose_file(tier)
-    cmd = ["docker", "compose", "-f", str(compose_file), "ps", "-q", service]
+    cmd = [
+        "docker",
+        "compose",
+        "-p",
+        f"cairn-{tier}",
+        "-f",
+        str(compose_file),
+        "ps",
+        "-q",
+        service,
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5.0, check=False)
     cid = proc.stdout.strip()
     if not cid:

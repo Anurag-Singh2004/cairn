@@ -43,9 +43,9 @@ CAIRN is a defense-in-depth, blind-by-design benchmarking and test harness desig
 2. **Leaky Positive Control (T0):** A deliberately unhardened baseline with flat networking and shared storage (`/shared`) to prove the auditor probes function correctly.
 3. **Switchboard Gateway:** Mediates all prompt traffic, pads responses into uniform space-padded buckets (DEC-13), quantizes release latency ($\Delta \times \lceil t / \Delta \rceil$), and salts model prefix-cache namespaces (`HMAC-SHA256(salt, session_id)`).
 4. **Statistical Side-Channel Probes:**
-   - **L1 Storage Probe:** Detects canary files exposed across shared mounts or cross-session prompt retention.
+   - **L1 Prefix-Cache Timing Probe:** Evaluates hit/miss latency AUC (Mann-Whitney) with bootstrap 95% CI and token recovery rate to detect cross-session cache timing side channels.
    - **L3 Verdict Fingerprint Probe:** Evaluates single-feature rank AUC (with 1000 bootstrap resamples) to detect if response size, latency, or status code leaks defensive block vs refusal decisions.
-   - **L4 Cache Timing Probe:** Welch's t-test comparing response latencies on shared vs new prompt prefixes to detect prefix-cache timing side channels ($p < 0.01$).
+   - **L4 Storage & Env Enumeration Probe:** Detects foreign canary tokens across container filesystems, shared mounts (/shared), and environment variables.
 5. **Cryptographic Receipts & Pure Certificate Recomputation:** Self-contained JSON receipts contain raw evidence events chained by SHA-256 hashes, RFC 6962 Merkle inclusion proofs to an Ed25519-signed checkpoint, and commit-reveal nonces. An independent verifier recomputes validity certificates offline directly from events.
 
 ---
@@ -92,12 +92,12 @@ CAIRN provides a unified command-line tool `cairn` (or `python -m cairn.cli`):
 
 Generated directly from recorded benchmark runs (see `docs/RESULTS.md`):
 
-| Property | Metric | T0 Leaky Baseline | T1 Hardened Isolation | Threshold / Target | Status |
+| Property | Metric & Threshold | T0 Leaky Baseline | T1 Hardened Isolation | Threshold / Target | Result Status |
 |---|---|---|---|---|---|
-| **L1 Storage** | Canary in `/shared` | `LEAK_DETECTED` (Planted canary) | `NO_LEAK` (0 leaks) | Zero leaks | **PROTECTED** |
-| **L3 Verdict** | Single-Feature AUC | `LEAK_DETECTED` (AUC: 1.00, CI: 1.00) | `NO_SIGNAL_AT_POWER` (AUC: 0.50) | Lower CI $\le 0.65$ | **NO SIGNAL** |
-| **L4 Timing** | Welch's t-test | `LEAK_DETECTED` ($p < 0.01$) | `NO_SIGNAL_AT_POWER` ($p \ge 0.01$) | $p \ge 0.01$ | **NO SIGNAL** |
-| **C3 Matrix** | $N \times N$ reachability | `DEVIATIONS` (3 unauthorized edges) | `ENFORCED` (0 deviations) | 0 deviations | **ENFORCED** |
+| **L1 Prefix-Cache Timing** | Hit/Miss AUC (CI <= 0.65, N=200) | `LEAK_DETECTED` (AUC: 1.00, CI: [0.99, 1.00]) | `NO_SIGNAL_AT_POWER` (AUC: 0.50, CI: [0.50, 0.50]) | Lower CI $\le 0.65$ | **NO_SIGNAL_AT_POWER** |
+| **L3 Verdict Fingerprint** | Single-Feature AUC (CI <= 0.65) | `LEAK_DETECTED` (AUC: 1.00, CI: 1.00) | `NO_SIGNAL_AT_POWER` (AUC: 0.50) | Lower CI $\le 0.65$ | **NO_SIGNAL_AT_POWER** |
+| **L4 Storage & Env Enum** | Foreign Canaries in `/shared` & Env | `LEAK_DETECTED` (Planted canary detected) | `NO_SIGNAL_AT_POWER` (No canaries found) | No foreign canaries | **PROTECTED (tested)** |
+| **C3 Matrix Reachability** | $N \times N$ reachability | `DEVIATIONS` (3 unauthorized edges) | `ENFORCED` (0 deviations) | 0 deviations | **ENFORCED** |
 | **Fault Handling**| Injected timeout | **Fail-Open** (false `BYPASS` quarantined) | **Fail-Closed** (`BLOCKED` + `infra.timeout`) | Fail closed | **ENFORCED** |
 
 ---

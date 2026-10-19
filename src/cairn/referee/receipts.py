@@ -41,7 +41,8 @@ def filter_receipt_events(all_events: list[Event], finding: str) -> list[Event]:
     """Filter run events to include run-level evidence plus finding-scoped events."""
     included: list[Event] = []
     for ev in all_events:
-        if ev.kind in RUN_LEVEL_EVENT_KINDS or ev.body.get("finding") == finding:
+        ev_finding = ev.body.get("finding")
+        if ev_finding == finding or (not ev_finding and ev.kind in RUN_LEVEL_EVENT_KINDS):
             included.append(ev)
     included.sort(key=lambda e: e.seq)
     return included
@@ -120,6 +121,7 @@ def generate_all_receipts_for_run(
     manifest: dict[str, Any],
     commitments: dict[str, Any],
     out_dir: Path | str,
+    target_findings: set[str] | list[str] | None = None,
 ) -> dict[str, Receipt]:
     """Generate and write receipts for all findings in a completed run."""
     all_events = store.get_events()
@@ -127,10 +129,13 @@ def generate_all_receipts_for_run(
     out_path.mkdir(parents=True, exist_ok=True)
 
     findings: set[str] = set()
-    for ev in all_events:
-        f = ev.body.get("finding")
-        if f:
-            findings.add(f)
+    if target_findings is not None:
+        findings = set(target_findings)
+    else:
+        for ev in all_events:
+            f = ev.body.get("finding")
+            if f and not f.startswith("f_l") and f != "f_000":
+                findings.add(f)
 
     receipts: dict[str, Receipt] = {}
     for finding in sorted(findings):

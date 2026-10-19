@@ -5,7 +5,7 @@ Tests against all criteria in flow.md §5 M2:
 2. Uniformity test: envelopes for blue-block, model-refusal, timeout are identical in shape.
 3. Release test: quantized release timing multiple of Δ, deadline timeout.
 4. AuthZ negative controls: no token, expired, wrong role, wrong run, over budget.
-5. SimEngine prefix caching: shared namespace timing gap, salted zero leakage.
+5. SimEngine prefix caching: shared namespace timing gap, salted namespace isolation.
 6. Event log from in-process run validates cryptographic hash-chain and feeds evidence store.
 """
 

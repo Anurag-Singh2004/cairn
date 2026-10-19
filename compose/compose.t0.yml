@@ -1,5 +1,4 @@
-# CAIRN Tier T0: Leaky Baseline Positive Control per context.md §7.2
-# Flat non-internal bridge network, shared volume mounted across tenants, no hardening.
+name: cairn-t0
 
 services:
   switchboard:

@@ -1,15 +1,16 @@
 """Integration tests for M4 Auditor probes and attestations.
 
-Tests against all criteria in flow.md §5 M4:
-1. Negative controls fire on T0:
-   - L1 probe detects leak planted in /shared
-   - L4 probe detects prefix cache timing leakage in T0
-2. Positive controls pass on T1:
-   - L1 probe confirms no cross-session or storage leak
-   - L3 probe confirms token call budget and size cap enforcement
-   - L4 probe confirms timing distribution is flat (p >= 0.01)
-3. Canary scanner flags foreign canaries
-4. Attestation collector emits attestation.manifest
+Tests against all criteria in context.md §9.3 and flow.md §5 M4:
+1. L1 Prefix-Cache Timing and Token Recovery probe:
+   - T0 detects prefix-cache timing leak (AUC lower CI > 0.65, high token recovery rate)
+   - T1 reports NO_SIGNAL_AT_POWER (flat 250ms latency, AUC ≈ 0.50)
+   - Low power (trials < 200) reports INCONCLUSIVE per thresholds.toml
+2. L4 Filesystem, Shared Volume, and Environment Enumeration probe:
+   - T0 detects planted misconfig / canary in /shared
+   - T1 reports NO_SIGNAL_AT_POWER
+3. L3 Quota probe confirms token call budget and size cap enforcement
+4. Conformance evaluation (C1, C2, C3, C11, C12)
+5. Canary scanner flags foreign canaries and clean state
 """
 
 from __future__ import annotations
@@ -20,9 +21,10 @@ import pytest
 
 from cairn.auditor.attestation import collect_attestations
 from cairn.auditor.canary import CanaryScanner
-from cairn.auditor.l1_leak import L1LeakProbe
+from cairn.auditor.conformance import evaluate_conformance_from_events
+from cairn.auditor.l1_cache_timing import L1CacheTimingProbe
 from cairn.auditor.l3_quota import L3QuotaProbe
-from cairn.auditor.l4_timing import L4TimingProbe
+from cairn.auditor.l4_fs import L4FsProbe
 from cairn.common.clock import FakeClock
 from cairn.common.schemas import TokenClaims
 from cairn.crypto.keys import generate_keypair
@@ -64,117 +66,7 @@ def probe_env(tmp_path: Path):
     }
 
 
-def test_l1_leak_probe_t0_vs_t1(probe_env) -> None:
-    clock = probe_env["clock"]
-    store = probe_env["store"]
-    priv = probe_env["priv_key"]
-    pub = probe_env["pub_key"]
-    run_id = probe_env["run_id"]
-    sim = probe_env["sim_engine"]
-    blue = probe_env["blue_guard"]
-    tmp_path = probe_env["tmp_path"]
-
-    # --- Test T0 (leaky baseline with shared volume) ---
-    shared_dir = tmp_path / "shared"
-    shared_dir.mkdir()
-    (shared_dir / "blue_policy_leak.txt").write_text(
-        "PLANTED_MISCONFIG: canary_blue_99aa88bb\npolicy: secret filters",
-        encoding="utf-8",
-    )
-
-    state_t0 = SwitchboardState()
-    state_t0.configure(
-        run_id=run_id,
-        referee_pubkey=pub,
-        tier_config={"tier": {"name": "t0", "cache_isolation": "shared", "quantise_ms": 0}},
-    )
-    state_t0.set_state(RunState.RUNNING)
-
-    pipeline_t0 = SwitchboardPipeline(
-        state=state_t0,
-        blue_guard=blue,
-        model_engine=sim,
-        session_mgr=SessionManager(cache_isolation="shared"),
-        clock=clock,
-        event_sink=store,
-    )
-
-    probe = L1LeakProbe(shared_dir=shared_dir)
-    token = mint_token(
-        TokenClaims(
-            role="red",
-            run=run_id,
-            sess="s_auditor",
-            caps=["attack.submit"],
-            max_calls=100,
-            exp_ns=2_000_000_000_000_000_000,
-        ),
-        priv,
-    )
-
-    report_t0 = probe.run_probe(pipeline_t0, token)
-    assert report_t0["leak_detected"] is True
-    assert report_t0["mechanism"] == "shared_storage_leak"
-
-    # --- Test T1 (clean isolated) ---
-    clean_dir = tmp_path / "clean_empty"
-    clean_dir.mkdir()
-    state_t1 = SwitchboardState()
-    state_t1.configure(
-        run_id=run_id,
-        referee_pubkey=pub,
-        tier_config={"tier": {"name": "t1", "cache_isolation": "salted", "quantise_ms": 250}},
-    )
-    state_t1.set_state(RunState.RUNNING)
-
-    pipeline_t1 = SwitchboardPipeline(
-        state=state_t1,
-        blue_guard=blue,
-        model_engine=sim,
-        session_mgr=SessionManager(cache_isolation="salted"),
-        clock=clock,
-        event_sink=store,
-    )
-
-    probe_t1 = L1LeakProbe(shared_dir=clean_dir)
-    report_t1 = probe_t1.run_probe(pipeline_t1, token)
-    assert report_t1["leak_detected"] is False
-
-
-def test_l3_quota_probe(probe_env) -> None:
-    clock = probe_env["clock"]
-    store = probe_env["store"]
-    priv = probe_env["priv_key"]
-    pub = probe_env["pub_key"]
-    run_id = probe_env["run_id"]
-    sim = probe_env["sim_engine"]
-    blue = probe_env["blue_guard"]
-
-    state = SwitchboardState()
-    state.configure(
-        run_id=run_id,
-        referee_pubkey=pub,
-        tier_config={"tier": {"name": "t1"}},
-    )
-    state.set_state(RunState.RUNNING)
-
-    pipeline = SwitchboardPipeline(
-        state=state,
-        blue_guard=blue,
-        model_engine=sim,
-        session_mgr=SessionManager(),
-        clock=clock,
-        event_sink=store,
-    )
-
-    l3 = L3QuotaProbe()
-    report = l3.run_probe(pipeline, priv, run_id)
-    assert report["budget_enforced"] is True
-    assert report["size_cap_enforced"] is True
-    assert report["passed"] is True
-
-
-def test_l4_timing_probe_t0_vs_t1(probe_env) -> None:
+def test_l1_cache_timing_probe_t0_vs_t1(probe_env) -> None:
     clock = probe_env["clock"]
     store = probe_env["store"]
     priv = probe_env["priv_key"]
@@ -189,13 +81,13 @@ def test_l4_timing_probe_t0_vs_t1(probe_env) -> None:
             run=run_id,
             sess="*",
             caps=["attack.submit"],
-            max_calls=500,
+            max_calls=1000,
             exp_ns=2_000_000_000_000_000_000,
         ),
         priv,
     )
 
-    # In T0: shared prefix cache + no release quantization -> timing difference detectable
+    # --- Test T0 (leaky baseline: shared prefix cache + unquantized release) ---
     state_t0 = SwitchboardState()
     state_t0.configure(
         run_id=run_id,
@@ -203,6 +95,7 @@ def test_l4_timing_probe_t0_vs_t1(probe_env) -> None:
         tier_config={"tier": {"name": "t0", "cache_isolation": "shared", "quantise_ms": 0}},
     )
     state_t0.set_state(RunState.RUNNING)
+
     pipeline_t0 = SwitchboardPipeline(
         state=state_t0,
         blue_guard=blue,
@@ -212,13 +105,15 @@ def test_l4_timing_probe_t0_vs_t1(probe_env) -> None:
         event_sink=store,
     )
 
-    l4 = L4TimingProbe()
-    rep_t0 = l4.run_probe(pipeline_t0, token, n_samples=10)
-    assert rep_t0["delta_ms"] > 0
+    probe_l1 = L1CacheTimingProbe(n_trials_per_class=200)
+    rep_t0 = probe_l1.run_probe(pipeline_t0, token, n_trials=200)
+    assert rep_t0["status"] == "LEAK_DETECTED"
     assert rep_t0["leak_detected"] is True
-    assert rep_t0["p_value_e4"] < 100  # p < 0.01
+    assert rep_t0["auc_e2"] > 65
+    assert rep_t0["lower_ci_e2"] > 65
+    assert rep_t0["token_recovery_rate_e4"] > rep_t0["chance_recovery_e4"]
 
-    # In T1: salted cache + 250ms quantized release -> delta_ms == 0, no leak detected
+    # --- Test T1 (hardened: salted cache + 250ms quantized release) ---
     state_t1 = SwitchboardState()
     state_t1.configure(
         run_id=run_id,
@@ -226,6 +121,7 @@ def test_l4_timing_probe_t0_vs_t1(probe_env) -> None:
         tier_config={"tier": {"name": "t1", "cache_isolation": "salted", "quantise_ms": 250}},
     )
     state_t1.set_state(RunState.RUNNING)
+
     pipeline_t1 = SwitchboardPipeline(
         state=state_t1,
         blue_guard=blue,
@@ -235,13 +131,151 @@ def test_l4_timing_probe_t0_vs_t1(probe_env) -> None:
         event_sink=store,
     )
 
-    rep_t1 = l4.run_probe(pipeline_t1, token, n_samples=10)
-    assert rep_t1["delta_ms"] == 0
+    rep_t1 = probe_l1.run_probe(pipeline_t1, token, n_trials=200)
+    assert rep_t1["status"] == "NO_SIGNAL_AT_POWER"
     assert rep_t1["leak_detected"] is False
-    assert rep_t1["p_value_e4"] >= 100  # p >= 0.01
+    assert rep_t1["lower_ci_e2"] <= 65
 
 
-def test_canary_scanner_and_attestation(probe_env) -> None:
+def test_l1_cache_timing_inconclusive_when_low_trials(probe_env) -> None:
+    clock = probe_env["clock"]
+    store = probe_env["store"]
+    priv = probe_env["priv_key"]
+    pub = probe_env["pub_key"]
+    run_id = probe_env["run_id"]
+    sim = probe_env["sim_engine"]
+    blue = probe_env["blue_guard"]
+
+    token = mint_token(
+        TokenClaims(
+            role="red",
+            run=run_id,
+            sess="*",
+            caps=["attack.submit"],
+            max_calls=100,
+            exp_ns=2_000_000_000_000_000_000,
+        ),
+        priv,
+    )
+
+    state = SwitchboardState()
+    state.configure(run_id=run_id, referee_pubkey=pub, tier_config={"tier": {"name": "t1"}})
+    state.set_state(RunState.RUNNING)
+    pipeline = SwitchboardPipeline(
+        state=state,
+        blue_guard=blue,
+        model_engine=sim,
+        session_mgr=SessionManager(),
+        clock=clock,
+        event_sink=store,
+    )
+
+    probe = L1CacheTimingProbe(n_trials_per_class=200)
+    # Only 10 trials instead of 200 required
+    rep = probe.run_probe(pipeline, token, n_trials=10)
+    assert rep["status"] == "INCONCLUSIVE"
+    assert "Insufficient sample size" in rep["details"]
+
+
+def test_l4_fs_probe_t0_vs_t1(probe_env) -> None:
+    clock = probe_env["clock"]
+    store = probe_env["store"]
+    priv = probe_env["priv_key"]
+    pub = probe_env["pub_key"]
+    run_id = probe_env["run_id"]
+    sim = probe_env["sim_engine"]
+    blue = probe_env["blue_guard"]
+    tmp_path = probe_env["tmp_path"]
+
+    token = mint_token(
+        TokenClaims(
+            role="red",
+            run=run_id,
+            sess="*",
+            caps=["attack.submit"],
+            max_calls=100,
+            exp_ns=2_000_000_000_000_000_000,
+        ),
+        priv,
+    )
+
+    state = SwitchboardState()
+    state.configure(run_id=run_id, referee_pubkey=pub, tier_config={"tier": {"name": "t1"}})
+    state.set_state(RunState.RUNNING)
+    pipeline = SwitchboardPipeline(
+        state=state,
+        blue_guard=blue,
+        model_engine=sim,
+        session_mgr=SessionManager(),
+        clock=clock,
+        event_sink=store,
+    )
+
+    # --- T0: Shared directory contains planted leak ---
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    (shared_dir / "blue_policy_leak.txt").write_text(
+        "PLANTED_MISCONFIG: canary_blue_99aa88bb\npolicy: secret filters",
+        encoding="utf-8",
+    )
+
+    probe_t0 = L4FsProbe(shared_dir=shared_dir)
+    rep_t0 = probe_t0.run_probe(pipeline, token)
+    assert rep_t0["status"] == "LEAK_DETECTED"
+    assert rep_t0["leak_detected"] is True
+    assert any("canary_blue_99aa88bb" in c for c in rep_t0["canaries_found"])
+
+    # --- T1: Clean empty directory ---
+    clean_dir = tmp_path / "clean_empty"
+    clean_dir.mkdir(parents=True, exist_ok=True)
+    probe_t1 = L4FsProbe(shared_dir=clean_dir)
+    rep_t1 = probe_t1.run_probe(pipeline, token)
+    assert rep_t1["status"] == "NO_SIGNAL_AT_POWER"
+    assert rep_t1["leak_detected"] is False
+    assert len(rep_t1["canaries_found"]) == 0
+
+
+def test_l3_quota_probe(probe_env) -> None:
+    clock = probe_env["clock"]
+    store = probe_env["store"]
+    priv = probe_env["priv_key"]
+    pub = probe_env["pub_key"]
+    run_id = probe_env["run_id"]
+    sim = probe_env["sim_engine"]
+    blue = probe_env["blue_guard"]
+
+    state = SwitchboardState()
+    state.configure(run_id=run_id, referee_pubkey=pub, tier_config={"tier": {"name": "t1"}})
+    state.set_state(RunState.RUNNING)
+
+    pipeline = SwitchboardPipeline(
+        state=state,
+        blue_guard=blue,
+        model_engine=sim,
+        session_mgr=SessionManager(),
+        clock=clock,
+        event_sink=store,
+    )
+
+    probe = L3QuotaProbe(max_allowed_calls=5, size_cap_bytes=16384)
+    token = mint_token(
+        TokenClaims(
+            role="red",
+            run=run_id,
+            sess="s_test",
+            caps=["attack.submit"],
+            max_calls=5,
+            exp_ns=2_000_000_000_000_000_000,
+        ),
+        priv,
+    )
+
+    report = probe.run_probe(pipeline, token)
+    assert report["quota_enforced"] is True
+    assert report["size_cap_enforced"] is True
+
+
+def test_canary_scanner_and_conformance(probe_env) -> None:
     clock = probe_env["clock"]
     store = probe_env["store"]
     pub = probe_env["pub_key"]
@@ -250,11 +284,7 @@ def test_canary_scanner_and_attestation(probe_env) -> None:
     blue = probe_env["blue_guard"]
 
     state = SwitchboardState()
-    state.configure(
-        run_id=run_id,
-        referee_pubkey=pub,
-        tier_config={"tier": {"name": "t1"}},
-    )
+    state.configure(run_id=run_id, referee_pubkey=pub, tier_config={"tier": {"name": "t1"}})
     state.set_state(RunState.RUNNING)
 
     pipeline = SwitchboardPipeline(
@@ -276,9 +306,8 @@ def test_canary_scanner_and_attestation(probe_env) -> None:
     scan_report = scanner.scan_run(pipeline)
     assert scan_report["clean"] is True
 
-    # Verify audit events emitted
+    # Conformance evaluation from events
     events = store.get_events()
-    kinds = [e.kind for e in events]
-    assert "attestation.manifest" in kinds
-    assert "attestation.canary_scan" in kinds
+    conformance = evaluate_conformance_from_events(events)
+    assert "C1_unauthorized_artifact_access_denied" in conformance
     assert store.verify_chain()[0] is True

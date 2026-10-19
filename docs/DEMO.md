@@ -15,9 +15,9 @@
 >
 > In CAIRN, we don't just assert security—we prove it. We start with Tier 0: our leaky baseline positive control. 
 > Notice how CAIRN's automated auditor immediately flags the system:
-> 1. The L1 storage probe discovers canaries exposed in shared storage.
-> 2. The L3 probe detects that response lengths and timing leak internal filter verdicts with an AUC of 1.0.
-> 3. The L4 probe detects prefix cache timing side channels with p-value < 0.01.
+> 1. The L1 prefix-cache timing probe detects cache timing leakage and token recovery with AUC 1.00.
+> 2. The L3 verdict fingerprint probe detects response length and latency leaks with AUC 1.00.
+> 3. The L4 storage probe discovers canaries exposed in shared storage.
 >
 > If a benchmark harness cannot catch a deliberately broken baseline, you cannot trust it when it says a system is safe."
 
@@ -36,10 +36,10 @@
 > - And fourth, Switchboard's uniform envelopes and quantized release timing.
 >
 > Look at the auditor results:
-> The L1 storage leak drops to zero.
+> The L1 cache timing leakage drops to AUC 0.50—no signal observed at test power.
 > The L3 verdict fingerprint drops to AUC 0.50—complete statistical noise.
-> And the L4 timing distribution is completely flat (p >= 0.01).
-> The system is protected against side channels."
+> And the L4 storage probe finds no foreign canaries.
+> Side channels are mitigated."
 
 ---
 

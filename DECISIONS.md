@@ -25,3 +25,11 @@
 - **Decision:** Target Python ≥ 3.11 in pyproject.toml; develop and test on 3.14. No 3.14-only features used.
 - **Consequences:** CI should test on 3.11 or 3.12 as well if possible. The Dockerfile will pin a specific Python version.
 - **Date:** 19 Oct 2026
+
+## DEC-23: Conformance probe mapping and statistical power thresholds
+
+- **Context:** Conformance audit identified probe mapping swap (L1 prefix-cache vs L4 filesystem/storage) and trial sizing divergence from pre-registered `configs/thresholds.toml`.
+- **Decision:** Strictly align L1 with prefix-cache timing ($N=200$ trials, candidate recovery rate, hit/miss AUC, 95% bootstrap CI) and L4 with filesystem/volume/env enumeration. When sample size $N < 200$, probes must emit `INCONCLUSIVE` (translated to invariant `I4` warning) rather than guessing or adjusting pre-registered thresholds.
+- **Consequences:** Benchmarks strictly adhere to context.md §9.3 & §11 and pre-registered thresholds in `configs/thresholds.toml`.
+- **Date:** 19 Oct 2026
+

@@ -488,10 +488,13 @@ def evaluate_certificate(
 
     l4_ev = next((e for e in ev_dicts if e["kind"] == "probe.l4.result"), None)
     if l4_ev:
-        if l4_ev["body"].get("canaries_found", 0) > 0:
+        cf = l4_ev["body"].get("canaries_found", 0)
+        n_canaries = len(cf) if isinstance(cf, list) else int(cf or 0)
+        leak_det = bool(l4_ev["body"].get("leak_detected", n_canaries > 0))
+        if leak_det or n_canaries > 0:
             residual_risks.append("LEAK DETECTED (L4 filesystem isolation)")
         else:
-            residual_risks.append("PROTECTED (tested, L4 filesystem isolation)")
+            residual_risks.append("TESTED, NOT PROVEN (no signal at power L4 filesystem)")
     else:
         residual_risks.append("NOT TESTED (L4 filesystem isolation)")
 

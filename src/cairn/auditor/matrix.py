@@ -56,33 +56,33 @@ def audit_matrix(tier: str = "t1") -> dict[str, Any]:
             measured_edges.append({"source": src, "error": f"Failed to parse report: {e}"})
 
     deviations: list[str] = []
-    if tier == "t1":
-        # In T1: Only T1_EXPECTED_EDGES should be reachable
-        for edge in measured_edges:
-            if "error" in edge:
-                deviations.append(f"{edge['source']}: {edge['error']}")
-                continue
-            src, tgt, port, reachable = (
-                edge["source"],
-                edge["target"],
-                edge["port"],
-                edge["reachable"],
-            )
-            if src == tgt:
-                continue
+    for edge in measured_edges:
+        if "error" in edge:
+            deviations.append(f"{edge['source']}: {edge['error']}")
+            continue
+        src, tgt, port, reachable = (
+            edge["source"],
+            edge["target"],
+            edge["port"],
+            edge["reachable"],
+        )
+        if src == tgt:
+            continue
 
-            is_expected = (src, tgt, port) in T1_EXPECTED_EDGES
-            if is_expected and not reachable:
-                deviations.append(f"Expected edge {src} -> {tgt}:{port} is NOT reachable")
-            elif not is_expected and reachable:
-                deviations.append(f"Illegal edge {src} -> {tgt}:{port} IS reachable")
+        is_expected = (src, tgt, port) in T1_EXPECTED_EDGES
+        if is_expected and not reachable:
+            deviations.append(f"Expected edge {src} -> {tgt}:{port} is NOT reachable")
+        elif not is_expected and reachable:
+            deviations.append(f"Illegal edge {src} -> {tgt}:{port} IS reachable")
 
-        for src, has_egress in egress_detected.items():
-            if has_egress:
-                deviations.append(f"Service '{src}' has illegal external egress in T1")
+    for src, has_egress in egress_detected.items():
+        if has_egress:
+            deviations.append(f"Service '{src}' has illegal external egress")
 
+    status = "ENFORCED" if len(deviations) == 0 else "DEVIATIONS"
     return {
         "tier": tier,
+        "status": status,
         "measured_edges": measured_edges,
         "egress_detected": egress_detected,
         "deviations": deviations,

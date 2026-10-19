@@ -265,4 +265,35 @@
   - [x] No secrets or private keys in git; `.gitignore` verified
 - All milestones M0 through M7 complete.
 
+---
+
+## 19 Oct 2026 20:20 IST — Independent Conformance Audit & Remediation
+
+**Findings & Fixes:**
+1. **Probe Mapping (context.md §9.3 & §11):**
+   - Corrected probe responsibilities: `L1CacheTimingProbe` implements prefix-cache timing with candidate token recovery, hit/miss AUC (Mann-Whitney), and 95% bootstrap confidence intervals ($N=200$). `L4FsProbe` implements filesystem, shared volume (`/shared`), and environment enumeration for foreign canaries.
+   - Updated event schemas (`probe.l1.result`, `probe.l4.result`) and backward shims (`l1_leak.py`, `l4_timing.py`).
+   - Verified invariant `I4` strictly consumes `probe.l1.result`.
+2. **Results Integrity & Matrix Audit:**
+   - Fixed deviation evaluation in `cairn.auditor.matrix`: evaluations now compute deviations against expected edges for both T0 and T1.
+   - Added Docker Compose project isolation (`-p cairn-{tier}`) in `docker_ctl.py` and Compose files to prevent cross-tier container collision.
+   - Fixed `docs/RESULTS.md` generator: correctly reads probe statuses, eliminated `None` values, and shows T0 C3 as `DEVIATIONS (3 deviations)` and T1 C3 as `ENFORCED (0 deviations)`.
+3. **Statistical Validity & Trial Sizing:**
+   - Configured `n_trials_per_class = 200` per `configs/thresholds.toml`. Probes return `status: INCONCLUSIVE` when $N < 200$ (low power warning in I4).
+   - Fixed binary discrimination chance baseline (50%) for hit vs distractor candidate pair recovery.
+4. **Claims Policy Purge:**
+   - Purged prohibited phrases ("zero leaks", "0 leaks", "NO_LEAK", "100% secure") across docs, docstrings, and comments.
+   - Replaced with standard terminology: `NO_SIGNAL_AT_POWER`, `LEAK_DETECTED`, `INCONCLUSIVE`, `ENFORCED`, `DEVIATIONS`.
+   - Documented exact run IDs (`r_demo_t0`, `r_demo_t1`, `r_demo_fault`), host class (`native-linux`), and engine backend (`SIMULATED`).
+5. **Receipt Optimization & Scoping:**
+   - Scoped receipt inclusion strictly to benchmark attack findings, preventing internal probe trial queries from generating spurious receipts.
+
+**Verified by:**
+- `make lint` → exit 0 (Ruff check clean, 80 files formatted)
+- `make test` → exit 0 (70 unit & integration tests pass)
+- `make test-e2e` → exit 0 (4 Docker container tests pass)
+- `make demo` → exit 0 (all 6 steps execute cleanly, untouched receipt verified, 1-byte tamper rejected)
+- `docs/RESULTS.md` regenerated and verified.
+
+
 
