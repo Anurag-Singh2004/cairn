@@ -8,6 +8,7 @@ from pathlib import Path
 from cairn.crypto.keys import generate_keypair, public_key_to_b64
 from cairn.crypto.merkle import compute_inclusion_proof_hex
 from cairn.referee.evidence import EvidenceStore
+from cairn.referee.validity import evaluate_certificate
 from cairn.referee.verify import verify_receipt_data
 
 
@@ -78,14 +79,11 @@ def test_evidence_store_chain_and_50_synthetic_events(tmp_path: Path) -> None:
         ],
         "checkpoint": signed_cp.checkpoint.canonical_dict(),
         "signature": signed_cp.signature,
-        "certificate": {
-            "finding": "f_001",
-            "status": "VALID",
-            "invariants": {},
-            "residual_risk": [],
-            "simulated": False,
-            "dev_only": False,
-        },
+        "certificate": evaluate_certificate(
+            events=[target_event],
+            finding="f_001",
+            manifest={"run": run_id, "tier": "t1"},
+        ).model_dump(),
         "pubkey_b64": public_key_to_b64(pub),
         "key_id": signed_cp.checkpoint.key_id,
     }

@@ -143,10 +143,44 @@ def verify_receipt_data(
             return False, "Step 4 failed: Blue commitment reveal verification failed"
 
     # -------------------------------------------------------------
-    # Step 5: Certificate check
+    # Step 5: Recompute certificate from included evidence events
     # -------------------------------------------------------------
     cert_data = receipt.get("certificate")
-    if cert_data and (not isinstance(cert_data, dict) or "status" not in cert_data):
-        return False, "Step 5 failed: Certificate malformed"
+    if not cert_data or not isinstance(cert_data, dict) or "status" not in cert_data:
+        return False, "Step 5 failed: Certificate malformed or missing"
+
+    try:
+        from cairn.referee.validity import evaluate_certificate
+
+        manifest_data = receipt.get("manifest")
+        finding_id = receipt.get("finding", "")
+        recomputed = evaluate_certificate(
+            events=events_data,
+            finding=finding_id,
+            manifest=manifest_data,
+        )
+
+        recorded_status = cert_data.get("status")
+        if recomputed.status != recorded_status:
+            return (
+                False,
+                f"Step 5 failed: Certificate status mismatch: "
+                f"recorded '{recorded_status}' != recomputed '{recomputed.status}'",
+            )
+
+        recorded_invariants = cert_data.get("invariants", {})
+        for inv_id, rec_inv in recorded_invariants.items():
+            recomp_inv = recomputed.invariants.get(inv_id)
+            if not recomp_inv:
+                return False, f"Step 5 failed: Missing recomputed invariant {inv_id}"
+            if recomp_inv.result != rec_inv.get("result"):
+                return (
+                    False,
+                    f"Step 5 failed: Invariant {inv_id} mismatch: "
+                    f"recorded '{rec_inv.get('result')}' != recomputed '{recomp_inv.result}'",
+                )
+
+    except Exception as e:
+        return False, f"Step 5 failed: Certificate recomputation error: {e}"
 
     return True, "Receipt verification succeeded"

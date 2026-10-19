@@ -176,3 +176,41 @@
 **Gate G3 (Auditor negative controls):** ✅ GREEN — L1 probe finds the leak planted by Blue in T0; L4 probe detects prefix cache timing leakage in T0 (p < 0.01).
 
 **Next:** M5 — Validity Engine and Certificates (I1-I9 evaluation, pure function from events, status, receipts generation, cairn verify integration)
+
+---
+
+## 19 Oct 2026 18:25 IST — M5: Validity, certificates, receipts, tamper demo
+
+**Done:**
+- Created `cairn.referee.validity`: Pure-function evaluation of invariants I1 through I9 (DEC-6) and status precedence rule (DEC-16: QUARANTINED > INCOMPLETE > VALID_WITH_WARNINGS > VALID)
+- Created `cairn.referee.receipts`: Self-contained finding receipt generation with RFC 6962 inclusion proofs, manifest, commitments, signed checkpoint, and recomputed certificate
+- Completed `cairn.referee.verify`: Enforced strict 5-step verification order (Step 1: Checkpoint signature -> Step 2: Event hashes and chain links -> Step 3: Merkle inclusion proofs -> Step 4: Commitments -> Step 5: Pure certificate recomputation from events)
+- Extended `cairn.cli`:
+  - `cairn certify --run <id>`: Evaluates certificates, renders formatted table, exports receipts and summary JSON
+  - `cairn verify <receipt.json>`: Verifies single receipt offline against all 5 steps
+  - `cairn verify-run --run <id>`: Verifies all receipts for a completed run
+- Created table-driven unit tests for all invariants (I1–I9) and precedence rules in `tests/unit/test_validity.py`
+- Created tamper demo test suite in `tests/integration/test_receipts_and_verify.py` and CLI tests in `tests/integration/test_cli_certify_and_verify.py`
+
+**Verified by:**
+- `make lint` → exit 0 (Ruff check clean, 65 files formatted)
+- `make test` → exit 0 (53 unit & integration tests passed in 0.58s)
+- `make test-e2e` → exit 0 (4 Docker e2e tests passed in 2.68s)
+- Table-driven tests verify minimal event sets for pass, fail, warn, missing for every invariant (I1–I9)
+- DEC-16 precedence verified: QUARANTINED outranks INCOMPLETE; INCOMPLETE outranks VALID_WITH_WARNINGS
+- Tamper demo verified:
+  - Untouched receipt passes verification (both explicit pubkey and standalone offline)
+  - Tampering checkpoint signature fails Step 1
+  - Tampering event content fails Step 2 (hash mismatch)
+  - Breaking event chain link fails Step 2
+  - Tampering Merkle inclusion proof fails Step 3
+  - Swapping revealed attack pack payload (C12) fails Step 4
+  - Fabricating or editing certificate status fails Step 5 (recomputation mismatch)
+- CLI commands tested: `cairn certify` produces receipts and certificates table; `cairn verify` and `cairn verify-run` exit 0 on untouched receipts and 1 on tampered receipts
+
+**Decisions:** (followed DEC-6, DEC-16, DEC-18, DEC-19)
+
+**Gate G4 (Tamper & Verification):** ✅ GREEN — Untouched receipts verify offline; 1-byte edits and payload swaps correctly fail and name failing steps 1 through 5.
+
+**Next:** M6 — Environmental interference, hardening, fault injection, report generator, and demo path
+
