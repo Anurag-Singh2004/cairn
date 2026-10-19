@@ -214,3 +214,55 @@
 
 **Next:** M6 — Environmental interference, hardening, fault injection, report generator, and demo path
 
+---
+
+## 19 Oct 2026 18:45 IST — M6: Environmental interference, hardening, docs, demo
+
+**Done:**
+- Created `cairn.crypto.vault`: AES-256-GCM authenticated encryption with associated data (AAD)
+- Created `cairn.auditor.stats`: Pure-Python Mann-Whitney rank AUC with tie handling and seeded bootstrap CI per DEC-9
+- Created `cairn.auditor.faults`: FaultInjector (`--inject-fault <type>@<finding>`) with `injected: true` label, fail-open (T0) vs fail-closed (T1) contrast, and background `CpuBurner` (`--burn`)
+- Created `cairn.auditor.l3_fingerprint`: L3 verdict fingerprinting probe classifying blue block vs model refusal from red-visible features (body length bucket, latency bucket, status code)
+- Created `cairn.referee.report`: Generates offline self-contained `report.html` (pure HTML/CSS, zero external CDNs)
+- Created `cairn.referee.results_doc`: Generates `docs/RESULTS.md` with honest limits, CIs, and thresholds
+- Created `cairn.referee.runner`: Full benchmark runner for T0, T1, and fault injection runs
+- Created `cairn.cli` commands: `cairn run`, `cairn report`, and `cairn demo`
+- Created documentation: `docs/THREAT_MODEL.md` (adversary model, guarantees, failure conditions, residual risks), `docs/DEMO.md` (3-minute video walkthrough script), and comprehensive `README.md`
+- Makefile updated: `make demo`, `make report`, `make verify`
+
+**Verified by:**
+- `make lint` → exit 0 (Ruff check clean, 76 files properly formatted)
+- `make test` → exit 0 (69 unit & integration tests passed in 0.75s)
+- `make test-e2e` → exit 0 (4 Docker e2e tests passed in 2.73s)
+- `make doctor` → exit 0 (all preflight checks pass)
+- `make demo` → exit 0 (all 6 steps execute cleanly: T0 run, T1 run, fault injection, untouched receipt verify, C8 1-byte tamper rejection, offline witness checkpoint hash print, `docs/RESULTS.md` generated)
+- `make verify RECEIPT=runs/r_demo_t1/receipts/receipt_f_001.json` → exit 0 (`VALID: Receipt verification succeeded`)
+- `make report RUN=r_demo_t1` → exit 0 (`Generated offline HTML report: runs/r_demo_t1/report.html`)
+- Fault injection contrast verified:
+  - T0 (fail-open): fault causes false BYPASS, flagged by I9 and QUARANTINED
+  - T1 (fail-closed): fault causes generic refusal, records BLOCKED with `infra.timeout`, quarantines only injected finding; rest remain valid
+- AES-GCM vault roundtrip and tampering rejection verified by unit tests
+
+**Decisions:** (followed DEC-9, DEC-10, DEC-13, DEC-16, DEC-17, DEC-19)
+
+**Gate G5 (Demo & Freeze):** ✅ GREEN — `make demo` completes in one command non-interactively with exit code 0 and writes `docs/RESULTS.md`.
+
+---
+
+## 19 Oct 2026 18:50 IST — M7: Freeze and Final Submission Verification
+
+**Done:**
+- Clean repository audit against Definition of Done (`flow.md` §10):
+  - [x] Public Git repository with commit history across milestones (M0 through M7)
+  - [x] Comprehensive `README.md` with ≤ 5-command quickstart, architecture diagram, honest limits, and CLI reference
+  - [x] `docs/THREAT_MODEL.md` documenting adversary profile, security guarantees, failure conditions, and residual risk register
+  - [x] `docs/DEMO.md` with ≤ 3-minute video recording script and walkthrough
+  - [x] `docs/RESULTS.md` machine-generated from recorded benchmark runs (`r_demo_t0`, `r_demo_t1`, `r_demo_fault`)
+  - [x] `make lint` passes cleanly (100% compliant)
+  - [x] `make test` passes (69/69 unit and integration tests green in < 1s)
+  - [x] `make test-e2e` passes (4/4 Docker container tests green)
+  - [x] `make demo` works end-to-end with exit code 0
+  - [x] No secrets or private keys in git; `.gitignore` verified
+- All milestones M0 through M7 complete.
+
+

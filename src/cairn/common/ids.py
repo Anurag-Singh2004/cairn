@@ -19,6 +19,12 @@ def make_session_id() -> str:
     return f"s_{secrets.token_hex(4)}"
 
 
-def make_finding_id(seq: int) -> str:
+def make_finding_id(seq: int = 1) -> str:
     """Generate a 1-indexed finding ID like 'f_001'."""
     return f"f_{seq:03d}"
+
+
+# Aliases for convenience
+generate_run_id = make_run_id
+generate_session_id = make_session_id
+generate_finding_id = make_finding_id

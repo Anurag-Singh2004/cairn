@@ -23,13 +23,21 @@ R_OUTPUT_CANARY_LEAK = "R_OUTPUT_CANARY_LEAK"
 class BlueGuard:
     """Evaluates input and output text against defensive filter rules."""
 
-    def __init__(self, policy_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        policy_path: Path | str | None = None,
+        policy: dict[str, Any] | None = None,
+        canary_token: str = "",
+        canary: str = "",
+    ) -> None:
         self.input_filters: list[tuple[re.Pattern, str]] = []
         self.output_filters: list[tuple[re.Pattern, str]] = []
         self.canaries: list[str] = []
 
         if policy_path:
             self.load_policy_file(policy_path)
+        elif policy:
+            self.load_policy(policy, canary=canary_token or canary)
 
     def load_policy_file(self, path: Path | str) -> None:
         with open(path, encoding="utf-8") as f:

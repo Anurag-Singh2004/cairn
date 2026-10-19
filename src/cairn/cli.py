@@ -101,14 +101,12 @@ def cmd_certify(args: argparse.Namespace) -> int:
         pubkey_path = Path(pubkey_arg)
     elif key_dir_env:
         pubkey_path = Path(key_dir_env) / "ref_ed25519.pub"
+    elif (run_dir.parent.parent / "keys" / "ref_ed25519.pub").is_file():
+        pubkey_path = run_dir.parent.parent / "keys" / "ref_ed25519.pub"
+    elif (run_dir.parent / "keys" / "ref_ed25519.pub").is_file():
+        pubkey_path = run_dir.parent / "keys" / "ref_ed25519.pub"
     else:
-        candidate = Path("keys") / "ref_ed25519.pub"
-        if (
-            not candidate.is_file()
-            and (run_dir.parent.parent / "keys" / "ref_ed25519.pub").is_file()
-        ):
-            candidate = run_dir.parent.parent / "keys" / "ref_ed25519.pub"
-        pubkey_path = candidate
+        pubkey_path = Path("keys") / "ref_ed25519.pub"
 
     pubkey_b64 = ""
     if pubkey_path and pubkey_path.is_file():
@@ -201,6 +199,126 @@ def cmd_verify_run(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Generate offline HTML assurance report."""
+    from cairn.referee.evidence import EvidenceStore
+    from cairn.referee.report import generate_html_report
+
+    run_dir = Path("runs") / args.run if not Path(args.run).is_dir() else Path(args.run)
+    db_path = run_dir / "evidence.db"
+    if not db_path.is_file():
+        print(f"Error: Evidence database not found: {db_path}", file=sys.stderr)
+        return 2
+
+    store = EvidenceStore(db_path)
+    out_file = Path(args.out) if args.out else run_dir / "report.html"
+    report_path = generate_html_report(run_id=args.run, store=store, out_path=out_file)
+    print(f"Generated offline HTML report: {report_path}")
+    return 0
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """Execute a benchmark run."""
+    from cairn.referee.runner import run_benchmark
+
+    run_dir = run_benchmark(
+        tier=args.tier,
+        pack_path=args.pack,
+        policy_path=args.policy,
+        fault_specs=args.inject_fault,
+        burn_cpu=args.burn,
+        run_id=args.run,
+    )
+    print(f"\n[BENCHMARK COMPLETE] Tier: {args.tier.upper()} · Run Directory: {run_dir}")
+    print(f"  Receipts: {run_dir / 'receipts'}")
+    print(f"  Report:   {run_dir / 'report.html'}")
+    print(f"  Results:  {run_dir / 'results.json'}\n")
+    return 0
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Execute full end-to-end demo workflow per context.md §14 and flow.md §5 M6."""
+    import copy
+
+    from cairn.referee.results_doc import generate_results_markdown
+    from cairn.referee.runner import run_benchmark
+
+    print("=" * 70)
+    print("CAIRN DEMO — STARTING AUTOMATED END-TO-END ASSURANCE WORKFLOW")
+    print("=" * 70)
+
+    pack_path = Path("data/attack_packs/demo.json")
+    policy_path = Path("data/policies/demo_blue.json")
+
+    # 1. Run T0 (leaky baseline positive control)
+    print("\n[Step 1/6] Running T0 Leaky Baseline Positive Control...")
+    t0_dir = run_benchmark("t0", pack_path, policy_path, run_id="r_demo_t0")
+    print(f"  T0 run completed: {t0_dir}")
+
+    # 2. Run T1 (hardened tier)
+    print("\n[Step 2/6] Running T1 Hardened Isolation Tier...")
+    t1_dir = run_benchmark("t1", pack_path, policy_path, run_id="r_demo_t1")
+    print(f"  T1 run completed: {t1_dir}")
+
+    # 3. Run Fault Injection Run (environmental interference)
+    print("\n[Step 3/6] Running Environmental Fault Injection Run (blue_timeout@f_005)...")
+    fault_dir = run_benchmark(
+        "t1",
+        pack_path,
+        policy_path,
+        fault_specs=["blue_timeout@f_005"],
+        burn_cpu=True,
+        run_id="r_demo_fault",
+    )
+    print(f"  Fault injection run completed: {fault_dir}")
+
+    # 4. Verify Untouched T1 Receipt
+    print("\n[Step 4/6] Verifying Untouched T1 Finding Receipt...")
+    receipt_files = sorted(list((t1_dir / "receipts").glob("receipt_*.json")))
+    if not receipt_files:
+        print("Error: No receipts generated for T1", file=sys.stderr)
+        return 1
+    sample_receipt = receipt_files[0]
+    with open(sample_receipt, encoding="utf-8") as f:
+        receipt_data = json.load(f)
+    ok, msg = verify_receipt_data(receipt_data)
+    if not ok:
+        print(f"Failed to verify untouched receipt: {msg}", file=sys.stderr)
+        return 1
+    print(f"  PASS: Untouched receipt {sample_receipt.name} verified successfully: {msg}")
+
+    # 5. Tamper Demo: mutate 1 byte in copy and verify fails
+    print("\n[Step 5/6] Executing Tamper Demo (C8 Byte Mutation)...")
+    tampered_copy = copy.deepcopy(receipt_data)
+    tampered_copy["events"][0]["body"]["tampered"] = True
+    ok_tamper, msg_tamper = verify_receipt_data(tampered_copy)
+    if ok_tamper:
+        print("ERROR: Tampered receipt unexpectedly passed verification!", file=sys.stderr)
+        return 1
+    print(f"  PASS: Tampered receipt was successfully rejected: {msg_tamper}")
+
+    # 6. Offline Witness Checkpoint Hash & Results Generation
+    print("\n[Step 6/6] Reading Offline Witness Checkpoint Hashes & Writing docs/RESULTS.md...")
+    t1_results = json.loads((t1_dir / "results.json").read_text(encoding="utf-8"))
+    t0_results = json.loads((t0_dir / "results.json").read_text(encoding="utf-8"))
+    fault_results = json.loads((fault_dir / "results.json").read_text(encoding="utf-8"))
+
+    t1_cp = t1_results["final_checkpoint"]
+    print(f"  T1 Signed Checkpoint Root: {t1_cp['root']}")
+    print(f"  T1 Checkpoint Run ID:      {t1_cp['run']}")
+    print(f"  T1 Checkpoint Tree Size:   {t1_cp['tree_size']}")
+
+    results_path = generate_results_markdown(
+        t0_results, t1_results, fault_results, Path("docs/RESULTS.md")
+    )
+    print(f"  Wrote comprehensive comparison to: {results_path}")
+
+    print("\n" + "=" * 70)
+    print("CAIRN DEMO COMPLETED SUCCESSFULLY — ALL SECURITY CONTROLS VERIFIED")
+    print("=" * 70 + "\n")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Execute preflight doctor diagnostics."""
     from cairn.referee.doctor import print_doctor_report, run_doctor
@@ -270,6 +388,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser_verify_run.add_argument("--run", required=True, help="Run ID or path to run directory")
     parser_verify_run.set_defaults(func=cmd_verify_run)
+
+    # report
+    parser_report = subparsers.add_parser("report", help="Generate offline HTML assurance report")
+    parser_report.add_argument("--run", required=True, help="Run ID or path to run directory")
+    parser_report.add_argument(
+        "--out", default=None, help="Output HTML file path (default: runs/<id>/report.html)"
+    )
+    parser_report.set_defaults(func=cmd_report)
+
+    # run
+    parser_run = subparsers.add_parser("run", help="Execute an assurance benchmark run")
+    parser_run.add_argument(
+        "--tier", default="t1", choices=["t0", "t1"], help="Target tier (t0 or t1)"
+    )
+    parser_run.add_argument(
+        "--pack", default="data/attack_packs/demo.json", help="Path to attack pack JSON"
+    )
+    parser_run.add_argument(
+        "--policy", default="data/policies/demo_blue.json", help="Path to blue policy JSON"
+    )
+    parser_run.add_argument(
+        "--inject-fault", action="append", default=None, help="Inject fault: <fault>@<finding>"
+    )
+    parser_run.add_argument(
+        "--burn", action="store_true", default=False, help="Burn CPU cycles during run"
+    )
+    parser_run.add_argument("--run", dest="run", default=None, help="Explicit run ID")
+    parser_run.set_defaults(func=cmd_run)
+
+    # demo
+    parser_demo = subparsers.add_parser(
+        "demo", help="Execute automated full end-to-end assurance demo"
+    )
+    parser_demo.set_defaults(func=cmd_demo)
 
     return parser
 

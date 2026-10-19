@@ -40,12 +40,16 @@ down:
 doctor:
 	$(PY) -m cairn.cli doctor --tier $(TIER)
 
+run:
+	$(PY) -m cairn.cli run --tier $(TIER)
+
 demo:
 	$(PY) -m cairn.cli demo
 
 verify:
-	@if [ -z "$(RECEIPT)" ]; then echo "Usage: make verify RECEIPT=<path>"; exit 2; fi
-	$(PY) -m cairn.cli verify $(RECEIPT)
+	@if [ -n "$(RECEIPT)" ]; then $(PY) -m cairn.cli verify $(RECEIPT); \
+	elif [ -n "$(RUN)" ]; then $(PY) -m cairn.cli verify-run --run $(RUN); \
+	else echo "Usage: make verify RUN=<id> or make verify RECEIPT=<path>"; exit 2; fi
 
 report:
 	@if [ -z "$(RUN)" ]; then echo "Usage: make report RUN=<id>"; exit 2; fi

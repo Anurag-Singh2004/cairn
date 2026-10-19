@@ -429,9 +429,12 @@ def evaluate_certificate(
         resp_released = any(e["kind"] == "response.released" for e in finding_events)
 
         if infra_failures:
+            failing_ev = infra_failures[0]
+            tag = failing_ev["kind"].upper().replace(".", "_")
+            injected_tag = "_INJECTED" if failing_ev["body"].get("injected") else ""
             invariants["I9"] = InvariantResult(
                 result="fail",
-                reason_code=f"INFRA_FAILURE_{infra_failures[0]['kind'].upper().replace('.', '_')}",
+                reason_code=f"INFRA_FAILURE_{tag}{injected_tag}",
                 evidence_seqs=[e["seq"] for e in infra_failures],
             )
         elif truncations:
