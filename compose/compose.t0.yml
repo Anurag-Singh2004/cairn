@@ -1,0 +1,61 @@
+# CAIRN Tier T0: Leaky Baseline Positive Control per context.md §7.2
+# Flat non-internal bridge network, shared volume mounted across tenants, no hardening.
+
+services:
+  switchboard:
+    image: cairn-base:latest
+    build:
+      context: ..
+      dockerfile: compose/Dockerfile
+    container_name: cairn-t0-switchboard
+    command: ["python", "-m", "cairn.switchboard.runner"]
+    networks:
+      - flat-net
+    volumes:
+      - shared-vol:/shared
+    tmpfs:
+      - /run:rw,mode=777
+
+  blue:
+    image: cairn-base:latest
+    build:
+      context: ..
+      dockerfile: compose/Dockerfile
+    container_name: cairn-t0-blue
+    command: ["python", "-m", "uvicorn", "cairn.tenants.blue.service:app", "--host", "0.0.0.0", "--port", "8100"]
+    networks:
+      - flat-net
+    volumes:
+      - shared-vol:/shared
+
+  model:
+    image: cairn-base:latest
+    build:
+      context: ..
+      dockerfile: compose/Dockerfile
+    container_name: cairn-t0-model
+    command: ["python", "-m", "uvicorn", "cairn.model.service:app", "--host", "0.0.0.0", "--port", "8200"]
+    networks:
+      - flat-net
+    volumes:
+      - shared-vol:/shared
+
+  red:
+    image: cairn-base:latest
+    build:
+      context: ..
+      dockerfile: compose/Dockerfile
+    container_name: cairn-t0-red
+    command: ["python", "-c", "import time; time.sleep(86400)"]
+    networks:
+      - flat-net
+    volumes:
+      - shared-vol:/shared
+
+networks:
+  flat-net:
+    driver: bridge
+    internal: false
+
+volumes:
+  shared-vol:

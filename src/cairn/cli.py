@@ -66,6 +66,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Execute preflight doctor diagnostics."""
+    from cairn.referee.doctor import print_doctor_report, run_doctor
+
+    ok, report = run_doctor(tier=args.tier, live_check=args.live)
+    print_doctor_report(report)
+    return 0 if ok else 3
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cairn",
@@ -96,6 +105,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to referee public key (optional if embedded in receipt)",
     )
     parser_verify.set_defaults(func=cmd_verify)
+
+    # doctor
+    parser_doctor = subparsers.add_parser("doctor", help="Preflight environment and tier doctor")
+    parser_doctor.add_argument(
+        "--tier",
+        default="t1",
+        choices=["t0", "t1"],
+        help="Target tier to inspect (default: t1)",
+    )
+    parser_doctor.add_argument(
+        "--live",
+        action="store_true",
+        help="Perform live container network and security audit (requires running containers)",
+    )
+    parser_doctor.set_defaults(func=cmd_doctor)
 
     return parser
 

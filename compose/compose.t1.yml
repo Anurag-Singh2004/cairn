@@ -1,0 +1,104 @@
+# CAIRN Tier T1: Hardened OCI per context.md §7.2
+# Isolated internal networks, no published ports, read-only rootfs, dropped capabilities.
+
+services:
+  switchboard:
+    image: cairn-base:latest
+    build:
+      context: ..
+      dockerfile: compose/Dockerfile
+    container_name: cairn-t1-switchboard
+    command: ["python", "-m", "cairn.switchboard.runner"]
+    networks:
+      red-net:
+        ipv4_address: 172.28.1.10
+      blue-net:
+        ipv4_address: 172.28.2.10
+      model-net:
+        ipv4_address: 172.28.3.10
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:rw,mode=1777
+      - /run:rw,mode=1777
+    pids_limit: 100
+    mem_limit: 1g
+    cpus: 2.0
+
+  blue:
+    image: cairn-base:latest
+    container_name: cairn-t1-blue
+    command: ["python", "-m", "uvicorn", "cairn.tenants.blue.service:app", "--host", "0.0.0.0", "--port", "8100"]
+    networks:
+      - blue-net
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp
+      - /run
+    pids_limit: 100
+    mem_limit: 1g
+    cpus: 2.0
+
+  model:
+    image: cairn-base:latest
+    container_name: cairn-t1-model
+    command: ["python", "-m", "uvicorn", "cairn.model.service:app", "--host", "0.0.0.0", "--port", "8200"]
+    networks:
+      - model-net
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp
+      - /run
+    pids_limit: 100
+    mem_limit: 1g
+    cpus: 2.0
+
+  red:
+    image: cairn-base:latest
+    container_name: cairn-t1-red
+    command: ["python", "-c", "import time; time.sleep(86400)"]
+    networks:
+      - red-net
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp
+      - /run
+    pids_limit: 100
+    mem_limit: 1g
+    cpus: 2.0
+
+networks:
+  red-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.1.0/24
+  blue-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.2.0/24
+  model-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.3.0/24

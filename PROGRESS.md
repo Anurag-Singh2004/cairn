@@ -109,3 +109,39 @@
 - Containerization and Docker Compose setup (T0/T1) is next (M3)
 
 **Next:** M3 — Containers, tiers, doctor (compose/Dockerfile, compose.t0.yml, compose.t1.yml, UDS admin, netprobe, matrix, cairn doctor)
+
+---
+
+## 19 Oct 2026 18:03 IST — M3: Containers, tiers, and doctor
+
+**Done:**
+- Created `compose/Dockerfile`: base image `python:3.12-slim` with non-root user `cairn` (UID 10001)
+- Created `compose/compose.t1.yml`: Hardened OCI tier (internal networks `red-net`, `blue-net`, `model-net`; read-only rootfs; `cap_drop: ["ALL"]`; `no-new-privileges: true`; `tmpfs: [/tmp, /run]`; non-root user `10001:10001`; no published ports)
+- Created `compose/compose.t0.yml`: Leaky baseline positive control (flat bridge network, shared `/shared` volume, no container hardening, positive control leaks)
+- Created `cairn.admin_client`: Unix domain socket admin client communicating with `/run/cairn/admin.sock` via `docker compose exec -T switchboard` per DEC-3
+- Created `cairn.switchboard.runner`: Dual server hosting tenant API on internal TCP port 8000 and referee admin API on UDS `/run/cairn/admin.sock`
+- Created `cairn.switchboard.remote_adapters`: RemoteBlueGuard and RemoteModelEngine HTTP client adapters
+- Created `cairn.tenants.blue.service`: Blue guard HTTP service running inside blue container on port 8100
+- Created `cairn.model.service`: Model HTTP service running inside model container on port 8200
+- Created `cairn.tenants.netprobe`: In-container socket probe checking target reachability and external egress
+- Created `cairn.auditor.matrix`: Host-side coordinator auditing N x N reachability matrix and external egress (Conformance Test C3)
+- Created `cairn.referee.docker_ctl`: Docker and Compose host controller
+- Created `cairn.referee.doctor`: Doctor preflight verification module checking Docker, cgroups, matrix, and container security controls
+- Created `cairn doctor` CLI subcommand supporting `--tier` and `--live`
+
+**Verified by:**
+- `make lint` → exit 0 (Ruff check clean, 54 files properly formatted)
+- `make test` → exit 0 (27 passed in 0.45s)
+- `make test-e2e` → exit 0 (4 passed in 2.70s):
+  - `test_t1_matrix_and_egress`: 0 deviations; only `red->switchboard:8000`, `switchboard->blue:8100`, `switchboard->model:8200` are reachable; zero egress across all 4 containers
+  - `test_t1_container_hardening_inspection`: verified `ReadonlyRootfs=True`, `CapDrop=['ALL']`, `User="10001:10001"`, `no_docker_sock=True`
+  - `test_t1_live_doctor_preflight`: live doctor preflight returns PASS
+  - `test_t1_live_attack_request`: real end-to-end request executed from inside `red` container to `switchboard` returns 200 with uniform envelope
+- `cairn doctor --tier t1 --live` executed: passed with exit code 0
+- `cairn doctor --tier t0` executed: verified positive control flags reported
+
+**Decisions:** (none new; followed DEC-2, DEC-3, DEC-7, DEC-11)
+
+**Gate G2 (Internal networks):** ✅ GREEN — N×N matrix on T1 shows only allowed edges, 0 deviations, zero external egress.
+
+**Next:** M4 — Auditor and probes (L1 cross-session probe, L3 token limit probe, L4 side channel timing probe, canary scanning, attestation collector)
