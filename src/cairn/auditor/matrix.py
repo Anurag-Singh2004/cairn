@@ -79,12 +79,17 @@ def audit_matrix(tier: str = "t1") -> dict[str, Any]:
         if has_egress:
             deviations.append(f"Service '{src}' has illegal external egress")
 
-    status = "ENFORCED" if len(deviations) == 0 else "DEVIATIONS"
+    has_error = any("error" in edge for edge in measured_edges)
+    if not measured_edges or has_error:
+        status = "FAILED"
+    else:
+        status = "ENFORCED" if len(deviations) == 0 else "DEVIATIONS"
+
     return {
         "tier": tier,
         "status": status,
         "measured_edges": measured_edges,
         "egress_detected": egress_detected,
         "deviations": deviations,
-        "valid": len(deviations) == 0,
+        "valid": status == "ENFORCED",
     }

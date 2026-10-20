@@ -39,7 +39,7 @@ def generate_html_report(
     findings: set[str] = set()
     for ev in events:
         f = ev.body.get("finding")
-        if f:
+        if f and not f.startswith("f_l") and f != "f_000":
             findings.add(f)
 
     # Evaluate certificate for each finding

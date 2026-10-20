@@ -8,6 +8,8 @@ services:
       dockerfile: compose/Dockerfile
     container_name: cairn-t1-switchboard
     command: ["python", "-m", "cairn.switchboard.runner"]
+    environment:
+      - CAIRN_BIND_HOST=172.28.1.10
     networks:
       red-net:
         ipv4_address: 172.28.1.10

@@ -85,15 +85,43 @@ def evaluate_certificate(
         attest_images = attest_body.get("images", {})
 
         mismatch = False
-        if frozen_compose and attest_compose and frozen_compose != attest_compose:
+        fabricated = False
+
+        # Reject fabricated placeholders
+        for comp_h in (frozen_compose, attest_compose):
+            if comp_h in ("f1e2d3c4b5a6", "001122334455"):
+                fabricated = True
+                break
+
+        for img_dict in (frozen_images, attest_images):
+            for img_val in img_dict.values():
+                img_str = str(img_val)
+                if (
+                    "switchboard:latest" in img_str
+                    or "model:latest" in img_str
+                    or "red:latest" in img_str
+                    or "simulated" in img_str
+                ):
+                    fabricated = True
+                    break
+
+        if not frozen_compose or not attest_compose or frozen_compose != attest_compose:
             mismatch = True
-        if frozen_images and attest_images:
+        if not frozen_images or not attest_images:
+            mismatch = True
+        else:
             for svc, img in frozen_images.items():
                 if attest_images.get(svc) != img:
                     mismatch = True
                     break
 
-        if mismatch:
+        if fabricated:
+            invariants["I1"] = InvariantResult(
+                result="fail",
+                reason_code="FABRICATED_ATTESTATION_IDENTIFIER",
+                evidence_seqs=[attest_manifest_ev["seq"]],
+            )
+        elif mismatch:
             invariants["I1"] = InvariantResult(
                 result="fail",
                 reason_code="MANIFEST_ATTESTATION_MISMATCH",
@@ -128,8 +156,16 @@ def evaluate_certificate(
 
     pre_dev = pre_matrix["body"].get("deviations", 0) if pre_matrix else None
     post_dev = post_matrix["body"].get("deviations", 0) if post_matrix else None
+    pre_status = pre_matrix["body"].get("status") if pre_matrix else None
+    post_status = post_matrix["body"].get("status") if post_matrix else None
 
-    if (pre_dev is not None and pre_dev > 0) or (post_dev is not None and post_dev > 0):
+    if pre_status == "FAILED" or post_status == "FAILED":
+        invariants["I2"] = InvariantResult(
+            result="fail",
+            reason_code="MATRIX_AUDIT_FAILED",
+            evidence_seqs=[e["seq"] for e in (pre_matrix, post_matrix) if e],
+        )
+    elif (pre_dev is not None and pre_dev > 0) or (post_dev is not None and post_dev > 0):
         invariants["I2"] = InvariantResult(
             result="fail",
             reason_code="MATRIX_DEVIATIONS_DETECTED",

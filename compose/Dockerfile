@@ -10,8 +10,9 @@ WORKDIR /app
 # Create non-root user 'cairn' (UID/GID 10001) per context.md §7.2
 RUN groupadd -g 10001 cairn && \
     useradd -u 10001 -g cairn -s /bin/bash -m cairn && \
-    mkdir -p /run/cairn /tmp/cairn && \
-    chown -R cairn:cairn /run/cairn /tmp/cairn /app
+    mkdir -p /run/cairn /tmp/cairn /shared && \
+    chown -R cairn:cairn /run/cairn /tmp/cairn /shared /app && \
+    chmod 1777 /shared /tmp/cairn
 
 # Install dependencies from pinned requirements.lock
 COPY requirements.lock /app/requirements.lock

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from cairn.common.schemas import Checkpoint, Event, Receipt
-from cairn.crypto.merkle import compute_inclusion_proof_hex
+from cairn.crypto.merkle import MerkleTree
 from cairn.referee.evidence import EvidenceStore
 from cairn.referee.validity import evaluate_certificate
 
@@ -57,17 +57,19 @@ def generate_finding_receipt(
     manifest: dict[str, Any],
     commitments: dict[str, Any],
     tool_versions: dict[str, str] | None = None,
+    tree: MerkleTree | None = None,
 ) -> Receipt:
     """Generate a self-contained receipt for a single finding."""
     leaves_bytes = [bytes.fromhex(ev.hash) for ev in all_events]
     seq_to_index = {ev.seq: idx for idx, ev in enumerate(all_events)}
 
     receipt_events = filter_receipt_events(all_events, finding)
+    merkle_tree = tree if tree is not None else MerkleTree(leaves_bytes)
 
     proofs: list[dict[str, Any]] = []
     for ev in receipt_events:
         leaf_idx = seq_to_index[ev.seq]
-        path_hex = compute_inclusion_proof_hex(leaf_idx, leaves_bytes)
+        path_hex = [p.hex() for p in merkle_tree.get_inclusion_proof(leaf_idx)]
         proofs.append(
             {
                 "index": leaf_idx,
@@ -138,6 +140,9 @@ def generate_all_receipts_for_run(
                 findings.add(f)
 
     receipts: dict[str, Receipt] = {}
+    leaves_bytes = [bytes.fromhex(ev.hash) for ev in all_events]
+    tree = MerkleTree(leaves_bytes)
+
     for finding in sorted(findings):
         receipt = generate_finding_receipt(
             finding=finding,
@@ -147,6 +152,7 @@ def generate_all_receipts_for_run(
             public_key_b64=public_key_b64,
             manifest=manifest,
             commitments=commitments,
+            tree=tree,
         )
         receipt_file = out_path / f"receipt_{finding}.json"
         save_receipt_file(receipt, receipt_file)

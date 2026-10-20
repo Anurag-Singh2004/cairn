@@ -75,13 +75,15 @@ class L1CacheTimingProbe:
         trials_count = n_trials if n_trials is not None else self.n_trials_per_class
         vocab = candidates or CANDIDATE_VOCAB
         k = len(vocab)
-        # Target vs distractor binary choice tested per trial: chance is 50%
-        chance_rate = 0.5
+        # Vocabulary size K determines the chance baseline: 1/K
+        chance_rate = 1.0 / k if k > 0 else 0.0
 
         rng = random.Random(self.seed)
         hit_latencies: list[int] = []
         miss_latencies: list[int] = []
         recoveries = 0
+        valid_trials = 0
+        missing_observations = 0
 
         for t in range(trials_count):
             target_idx = rng.randint(0, k - 1)
@@ -99,62 +101,63 @@ class L1CacheTimingProbe:
                 finding_id=f"f_l1_vic_{t}",
             )
 
-            # 2. Attacker probes candidate tokens in a new session
+            # 2. Attacker probes all K candidate tokens in a new session
             attacker_sess = f"s_l1_att_{t}"
             candidate_latencies: dict[str, int] = {}
+            trial_has_missing = False
 
-            # Distractor word
-            distractor_idx = (target_idx + 1) % k
-            distractor_word = vocab[distractor_idx]
+            for c_idx, cand_word in enumerate(vocab):
+                cand_prompt = (
+                    f"Confidential security authorization code sequence {t:04d}: "
+                    f"{cand_word} secret"
+                )
+                pipeline.process_request(
+                    token=token,
+                    session_id=attacker_sess,
+                    prompt=cand_prompt,
+                    finding_id=f"f_l1_att_{t}_{c_idx}",
+                )
+                lat = self._extract_release_ms(pipeline, f"f_l1_att_{t}_{c_idx}")
+                if lat is None:
+                    trial_has_missing = True
+                    break
+                candidate_latencies[cand_word] = lat
 
-            # Query target
-            _env_target, _ = pipeline.process_request(
-                token=token,
-                session_id=attacker_sess,
-                prompt=victim_prompt,
-                finding_id=f"f_l1_att_{t}_target",
-            )
-            lat_target = self._extract_release_ms(pipeline, f"f_l1_att_{t}_target")
-            candidate_latencies[target_word] = lat_target
+            if trial_has_missing or len(candidate_latencies) < k:
+                missing_observations += 1
+                continue
+
+            valid_trials += 1
+            lat_target = candidate_latencies[target_word]
             hit_latencies.append(lat_target)
+            for cand_word, lat in candidate_latencies.items():
+                if cand_word != target_word:
+                    miss_latencies.append(lat)
 
-            # Query distractor
-            distractor_prompt = (
-                f"Confidential security authorization code sequence {t:04d}:"
-                f" {distractor_word} secret"
-            )
-            _env_dist, _ = pipeline.process_request(
-                token=token,
-                session_id=attacker_sess,
-                prompt=distractor_prompt,
-                finding_id=f"f_l1_att_{t}_dist",
-            )
-            lat_dist = self._extract_release_ms(pipeline, f"f_l1_att_{t}_dist")
-            candidate_latencies[distractor_word] = lat_dist
-            miss_latencies.append(lat_dist)
-
-            # Check if attacker picks target (lowest latency)
-            if lat_target < lat_dist:
-                recoveries += 1
-            elif lat_target == lat_dist and rng.random() < 0.5:
-                # Tie broken by coin flip
+            # Attacker selects the candidate with minimum latency
+            min_lat = min(candidate_latencies.values())
+            best_candidates = [cw for cw, lat in candidate_latencies.items() if lat == min_lat]
+            if target_word in best_candidates and rng.choice(best_candidates) == target_word:
+                # Uniform random tie-breaking among candidates with the identical minimum latency
                 recoveries += 1
 
-        token_recovery_rate = recoveries / trials_count if trials_count > 0 else 0.0
-        recovery_multiple = token_recovery_rate / chance_rate if chance_rate > 0 else 0.0
-
-        # Check sample size threshold
-        if trials_count < self.n_trials_per_class:
+        # Check sample size and missing observations threshold
+        if valid_trials < self.n_trials_per_class:
             point_auc = 0.5
             lower_ci = 0.5
             upper_ci = 0.5
+            token_recovery_rate = recoveries / valid_trials if valid_trials > 0 else 0.0
+            recovery_multiple = token_recovery_rate / chance_rate if chance_rate > 0 else 0.0
             status = "INCONCLUSIVE"
             reason = (
-                f"Insufficient sample size: trials={trials_count} < required "
-                f"{self.n_trials_per_class} per configs/thresholds.toml"
+                f"Insufficient sample size: valid_trials={valid_trials} < required "
+                f"{self.n_trials_per_class} per configs/thresholds.toml "
+                f"(missing_observations={missing_observations})"
             )
             leak_detected = False
         else:
+            token_recovery_rate = recoveries / valid_trials
+            recovery_multiple = token_recovery_rate / chance_rate if chance_rate > 0 else 0.0
             # When cache hits are faster, miss latencies > hit latencies
             point_auc, lower_ci, upper_ci = bootstrap_auc_ci(
                 positives=miss_latencies,
@@ -163,14 +166,15 @@ class L1CacheTimingProbe:
                 seed=self.seed,
             )
             leak_detected = (
-                lower_ci > self.leak_auc_lower_ci
+                lower_ci >= self.leak_auc_lower_ci
                 or recovery_multiple >= self.chance_recovery_multiple
             )
             status = "LEAK_DETECTED" if leak_detected else "NO_SIGNAL_AT_POWER"
             reason = (
-                f"Evaluated {trials_count} trials: AUC={point_auc:.3f} "
+                f"Evaluated {valid_trials} trials: AUC={point_auc:.3f} "
                 f"(95% CI [{lower_ci:.3f}, {upper_ci:.3f}]), "
-                f"recovery={token_recovery_rate:.1%} vs chance {chance_rate:.1%}"
+                f"recovery={token_recovery_rate:.1%} vs chance {chance_rate:.1%} "
+                f"({recovery_multiple:.2f}x chance)"
             )
 
         report = {
@@ -178,8 +182,9 @@ class L1CacheTimingProbe:
             "status": status,
             "leak_detected": leak_detected,
             "metric": "auc_lower_ci",
-            "trials": trials_count,
+            "trials": valid_trials,
             "trials_required": self.n_trials_per_class,
+            "missing_observations": missing_observations,
             "auc_e2": round(point_auc * 100),
             "lower_ci_e2": round(lower_ci * 100),
             "upper_ci_e2": round(upper_ci * 100),
@@ -194,10 +199,22 @@ class L1CacheTimingProbe:
         pipeline.emit_event("probe.l1.result", report)
         return report
 
-    def _extract_release_ms(self, pipeline: SwitchboardPipeline, finding_id: str) -> int:
+    def _extract_release_ms(self, pipeline: SwitchboardPipeline, finding_id: str) -> int | None:
         if pipeline.event_sink is not None:
+            if hasattr(pipeline.event_sink, "get_last_event"):
+                last_ev = pipeline.event_sink.get_last_event()
+                if (
+                    last_ev
+                    and last_ev.kind == "response.released"
+                    and last_ev.body.get("finding") == finding_id
+                ):
+                    val = last_ev.body.get("release_ms")
+                    if val is not None:
+                        return int(val)
             events = pipeline.event_sink.get_events()
             for ev in reversed(events):
                 if ev.kind == "response.released" and ev.body.get("finding") == finding_id:
-                    return int(ev.body.get("release_ms", 250))
-        return 250
+                    val = ev.body.get("release_ms")
+                    if val is not None:
+                        return int(val)
+        return None

@@ -34,7 +34,7 @@ async def run_servers() -> None:
     if uds_path.exists():
         uds_path.unlink()
 
-    bind_host = os.environ.get("CAIRN_BIND_HOST", "172.28.1.10")
+    bind_host = os.environ.get("CAIRN_BIND_HOST", "0.0.0.0")
 
     # Config for internal TCP server (tenant API)
     tcp_config = uvicorn.Config(

@@ -47,26 +47,62 @@ def compute_root_hex(leaves: list[bytes]) -> str:
     return compute_root(leaves).hex()
 
 
+class MerkleTree:
+    """Precomputed RFC 6962 Merkle tree for fast root and inclusion proof generation."""
+
+    def __init__(self, leaves: list[bytes]) -> None:
+        self.leaves = leaves
+        self.n = len(leaves)
+        self._subtree_roots: dict[tuple[int, int], bytes] = {}
+        if self.n > 0:
+            self._build(0, self.n)
+
+    def _build(self, start: int, end: int) -> bytes:
+        span = end - start
+        if span == 1:
+            r = compute_leaf_hash(self.leaves[start])
+            self._subtree_roots[(start, end)] = r
+            return r
+        k = largest_power_of_two_less_than(span)
+        left = self._build(start, start + k)
+        right = self._build(start + k, end)
+        root = rfc6962_node_hash(left, right)
+        self._subtree_roots[(start, end)] = root
+        return root
+
+    def get_root(self) -> bytes:
+        if self.n == 0:
+            return EMPTY_STRING_HASH_BYTES
+        return self._subtree_roots[(0, self.n)]
+
+    def get_inclusion_proof(self, index: int) -> list[bytes]:
+        if not (0 <= index < self.n):
+            raise ValueError(f"Leaf index {index} out of range for tree size {self.n}")
+        if self.n == 1:
+            return []
+
+        proof: list[bytes] = []
+        start, end = 0, self.n
+        while end - start > 1:
+            span = end - start
+            k = largest_power_of_two_less_than(span)
+            mid = start + k
+            if index < mid:
+                proof.append(self._subtree_roots[(mid, end)])
+                end = mid
+            else:
+                proof.append(self._subtree_roots[(start, mid)])
+                start = mid
+        proof.reverse()
+        return proof
+
+
 def compute_inclusion_proof(index: int, leaves: list[bytes]) -> list[bytes]:
     """Generate RFC 6962 §2.1.1 inclusion proof (audit path) for leaf at index.
 
     The returned path is ordered from leaf-level sibling to root-level sibling.
     """
-    n = len(leaves)
-    if not (0 <= index < n):
-        raise ValueError(f"Leaf index {index} out of range for tree size {n}")
-    if n == 1:
-        return []
-
-    k = largest_power_of_two_less_than(n)
-    if index < k:
-        sub_path = compute_inclusion_proof(index, leaves[:k])
-        sub_path.append(compute_root(leaves[k:]))
-        return sub_path
-    else:
-        sub_path = compute_inclusion_proof(index - k, leaves[k:])
-        sub_path.append(compute_root(leaves[:k]))
-        return sub_path
+    return MerkleTree(leaves).get_inclusion_proof(index)
 
 
 def compute_inclusion_proof_hex(index: int, leaves: list[bytes]) -> list[str]:

@@ -96,3 +96,74 @@ class L4FsProbe:
             pipeline.emit_event("probe.l4.result", report)
 
         return report
+
+    def run_container_probe(
+        self,
+        tier: str,
+        target_service: str = "red",
+        pipeline: SwitchboardPipeline | None = None,
+    ) -> dict[str, Any]:
+        """Execute L4 enumeration inside a running tier container."""
+        from cairn.referee.docker_ctl import compose_exec
+
+        cmd = [
+            "python",
+            "-c",
+            (
+                "from cairn.auditor.l4_fs import L4FsProbe; "
+                "import json; print(json.dumps(L4FsProbe().run_probe()))"
+            ),
+        ]
+        rc, out, err = compose_exec(tier, target_service, cmd)
+        if rc != 0:
+            report = {
+                "probe": "L4",
+                "status": "FAILED",
+                "leak_detected": False,
+                "canaries_found": [],
+                "paths_scanned": [],
+                "shared_volume_present": False,
+                "details": (
+                    f"Container probe execution failed on service '{target_service}': "
+                    f"rc={rc}, {err.strip()}"
+                ),
+            }
+        else:
+            try:
+                import json
+
+                report = json.loads(out)
+            except Exception as e:
+                report = {
+                    "probe": "L4",
+                    "status": "FAILED",
+                    "leak_detected": False,
+                    "canaries_found": [],
+                    "paths_scanned": [],
+                    "shared_volume_present": False,
+                    "details": f"Failed to parse container probe output: {e}",
+                }
+
+        if pipeline is not None:
+            pipeline.emit_event("probe.l4.result", report)
+
+        return report
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+    import sys
+
+    parser = argparse.ArgumentParser(description="L4 Filesystem & Environment Auditor Probe")
+    parser.add_argument("--shared-dir", default="/shared", help="Shared directory path to scan")
+    parser.add_argument("--json", action="store_true", help="Output JSON report")
+    args = parser.parse_args()
+
+    probe = L4FsProbe(shared_dir=args.shared_dir, scan_paths=[args.shared_dir])
+    res = probe.run_probe()
+    if args.json:
+        print(json.dumps(res))
+    else:
+        print(f"Status: {res['status']} | Leaks: {res['canaries_found']}")
+    sys.exit(0)

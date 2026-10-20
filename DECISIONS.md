@@ -33,3 +33,14 @@
 - **Consequences:** Benchmarks strictly adhere to context.md §9.3 & §11 and pre-registered thresholds in `configs/thresholds.toml`.
 - **Date:** 19 Oct 2026
 
+## DEC-24: Honest network audit propagation, K=10 L1 token-recovery design, and container execution for L4
+
+- **Context:** Conformance audit identified that matrix audit fell back to hardcoded simulated results upon error, L1 candidate token-recovery binary setup ($K=2$) was mathematically incompatible with configured $5\times\text{chance}$ threshold, and L4 probe scanned host directories rather than container isolation boundaries.
+- **Decision:**
+  1. Matrix audit never falls back to fabricated results; failures immediately surface as `FAILED` with explicit error deviations causing invariant `I2` to evaluate `fail`.
+  2. L1 probe adopts a $K=10$ candidate token-recovery protocol (chance baseline $10\%$, target $5\times\text{chance} = 50\%$) with honest missing-event handling returning `INCONCLUSIVE`.
+  3. L4 probe executes inside running tenant containers (`cairn-{tier}-red`) inspecting `/shared` volume and environment variables directly within the container execution context.
+  4. Attestation manifests capture real Docker image IDs and compose hashes; invariant `I1` explicitly rejects placeholder hashes (`f1e2d3c4b5a6`, `sha256:switchboard:latest`).
+- **Consequences:** All assurance metrics and certificates are derived strictly from genuine execution without synthetic shortcuts.
+- **Date:** 20 Oct 2026
+

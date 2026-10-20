@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from cairn.auditor.attestation import get_image_id
 from cairn.auditor.canary import CanaryScanner
 from cairn.auditor.faults import CpuBurner, FaultInjector, simulate_fault_effect
 from cairn.auditor.l1_cache_timing import L1CacheTimingProbe
@@ -30,6 +31,7 @@ from cairn.crypto.keys import generate_keypair, load_private_key, public_key_to_
 from cairn.crypto.tokens import TokenClaims, mint_token
 from cairn.model.sim_engine import SimEngine
 from cairn.referee.controller import RunState
+from cairn.referee.docker_ctl import get_compose_sha256, get_container_image_ids, is_tier_running
 from cairn.referee.evidence import EvidenceStore
 from cairn.referee.receipts import generate_all_receipts_for_run
 from cairn.referee.report import generate_html_report
@@ -42,41 +44,34 @@ from cairn.tenants.blue.guard import BlueGuard
 def _execute_matrix_audit(tier: str, phase: str) -> dict[str, Any]:
     try:
         res = audit_matrix(tier)
+        deviations = res.get("deviations", [])
         has_probe_error = any("error" in edge for edge in res.get("measured_edges", []))
-        if not has_probe_error and res.get("measured_edges"):
+        if has_probe_error or res.get("status") == "FAILED":
             return {
                 "phase": phase,
                 "tier": tier,
-                "deviations": len(res.get("deviations", [])),
-                "status": "ENFORCED" if len(res.get("deviations", [])) == 0 else "DEVIATIONS",
+                "deviations": len(deviations) if len(deviations) > 0 else 1,
+                "status": "FAILED",
                 "measured_edges": res.get("measured_edges", []),
+                "deviations_list": deviations,
             }
-    except Exception:
-        pass
-
-    if tier == "t1":
         return {
             "phase": phase,
-            "tier": "t1",
-            "deviations": 0,
-            "status": "ENFORCED",
-            "measured_edges": [
-                {"source": "red", "target": "switchboard", "port": 8000, "reachable": True},
-                {"source": "switchboard", "target": "blue", "port": 8100, "reachable": True},
-                {"source": "switchboard", "target": "model", "port": 8200, "reachable": True},
-            ],
+            "tier": tier,
+            "deviations": len(deviations),
+            "status": "ENFORCED" if len(deviations) == 0 else "DEVIATIONS",
+            "measured_edges": res.get("measured_edges", []),
+            "deviations_list": deviations,
         }
-    else:
+    except Exception as e:
         return {
             "phase": phase,
-            "tier": "t0",
-            "deviations": 3,
-            "status": "DEVIATIONS",
-            "measured_edges": [
-                {"source": "red", "target": "blue", "port": 8100, "reachable": True},
-                {"source": "red", "target": "model", "port": 8200, "reachable": True},
-                {"source": "blue", "target": "egress", "port": 443, "reachable": True},
-            ],
+            "tier": tier,
+            "deviations": 1,
+            "status": "FAILED",
+            "measured_edges": [],
+            "error": str(e),
+            "deviations_list": [f"Matrix audit execution failed: {e}"],
         }
 
 
@@ -119,22 +114,28 @@ def run_benchmark(
     red_nonce = generate_nonce()
     commit_r = compute_commit_red(red_nonce, pack_data)
 
+    compose_hash = get_compose_sha256(tier)
+    if is_tier_running(tier):
+        container_images = get_container_image_ids(tier)
+    else:
+        base_img = get_image_id("cairn-base:latest")
+        container_images = {
+            "switchboard": base_img,
+            "blue": base_img,
+            "model": base_img,
+            "red": base_img,
+        }
+
     blue_nonce = generate_nonce()
-    blue_image_id = "sha256:cairn-base:latest"
+    blue_image_id = container_images["blue"]
     commit_b = compute_commit_blue(blue_nonce, blue_image_id, policy_data)
 
     # 4. Freeze Manifest
-    compose_hash = "f1e2d3c4b5a6" if tier == "t1" else "001122334455"
     manifest = {
         "run": actual_run_id,
         "tier": tier,
         "compose_sha256": compose_hash,
-        "images": {
-            "switchboard": "sha256:switchboard:latest",
-            "blue": blue_image_id,
-            "model": "sha256:model:latest",
-            "red": "sha256:red:latest",
-        },
+        "images": container_images,
         "cache_isolation": "salted" if tier == "t1" else "none",
         "model": {"backend": "sim_engine", "version": "1.0"},
         "commitments": {"red": commit_r, "blue": commit_b},
@@ -307,7 +308,7 @@ def run_benchmark(
             run=actual_run_id,
             sess="*",
             caps=["attack.submit"],
-            max_calls=2000,
+            max_calls=5000,
             exp_ns=clock.now_ns() + 3_600_000_000_000,
         ),
         privkey,
@@ -336,15 +337,19 @@ def run_benchmark(
     l3_probe.emit_event(store, actual_run_id, l3_res, clock.now_ns())
 
     # L4 Filesystem, Shared Volume, and Environment Enumeration Probe
-    shared_dir = run_dir / "shared"
-    if tier == "t0":
-        shared_dir.mkdir(parents=True, exist_ok=True)
-        (shared_dir / "blue_policy_leak.txt").write_text(
-            "PLANTED_MISCONFIG: canary_blue_99aa88bb\npolicy: secret filters",
-            encoding="utf-8",
-        )
-    l4_probe = L4FsProbe(shared_dir=shared_dir)
-    l4_res = l4_probe.run_probe(pipeline, token=auditor_token)
+    l4_probe = L4FsProbe()
+    if is_tier_running(tier):
+        l4_res = l4_probe.run_container_probe(tier, target_service="red", pipeline=pipeline)
+    else:
+        shared_dir = run_dir / "shared"
+        if tier == "t0":
+            shared_dir.mkdir(parents=True, exist_ok=True)
+            (shared_dir / "blue_policy_leak.txt").write_text(
+                "PLANTED_MISCONFIG: canary_blue_99aa88bb\npolicy: secret filters",
+                encoding="utf-8",
+            )
+        l4_probe = L4FsProbe(shared_dir=shared_dir)
+        l4_res = l4_probe.run_probe(pipeline, token=auditor_token)
 
     # Canary Scanner
     canary_scanner = CanaryScanner()
@@ -355,12 +360,15 @@ def run_benchmark(
     store.append_event(actual_run_id, clock.now_ns(), "attestation.matrix", "auditor", post_matrix)
 
     # Manifest Attestation
+    post_compose_hash = get_compose_sha256(tier)
+    post_images = get_container_image_ids(tier) if is_tier_running(tier) else manifest["images"]
+
     store.append_event(
         actual_run_id,
         clock.now_ns(),
         "attestation.manifest",
         "auditor",
-        {"compose_sha256": compose_hash, "images": manifest["images"]},
+        {"compose_sha256": post_compose_hash, "images": post_images},
     )
 
     # 9. Conclude & Reveal Commitments

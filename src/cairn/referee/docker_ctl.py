@@ -157,8 +157,42 @@ def inspect_service_container(tier: str, service: str) -> dict[str, Any]:
         timeout=5.0,
         check=False,
     )
-    if ins_proc.returncode != 0:
-        raise PreflightError(f"docker inspect failed for {service}: {ins_proc.stderr}")
-
     data = json.loads(ins_proc.stdout)
     return data[0] if data else {}
+
+
+def get_compose_sha256(tier: str) -> str:
+    """Compute SHA-256 hash of the tier's docker-compose configuration file."""
+    from cairn.common.hashing import sha256_hex
+
+    compose_file = get_compose_file(tier)
+    return sha256_hex(compose_file.read_bytes())
+
+
+def get_container_image_ids(tier: str, services: list[str] | None = None) -> dict[str, str]:
+    """Inspect and return actual image digests for running services."""
+    svcs = services or ["switchboard", "blue", "model", "red"]
+    image_ids: dict[str, str] = {}
+    for svc in svcs:
+        try:
+            info = inspect_service_container(tier, svc)
+            img_id = info.get("Image")
+            if not img_id:
+                raise PreflightError(f"Missing Image in inspect for {svc}")
+            image_ids[svc] = str(img_id)
+        except Exception as e:
+            raise PreflightError(f"Failed to inspect image for service '{svc}': {e}") from e
+    return image_ids
+
+
+def is_tier_running(tier: str, services: list[str] | None = None) -> bool:
+    """Check if all services in the tier are running."""
+    svcs = services or ["switchboard", "blue", "model", "red"]
+    for svc in svcs:
+        try:
+            info = inspect_service_container(tier, svc)
+            if not info.get("State", {}).get("Running", False):
+                return False
+        except Exception:
+            return False
+    return True
