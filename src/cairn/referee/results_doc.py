@@ -66,6 +66,12 @@ def generate_results_markdown(
     t0_l4_details = t0_l4.get("details", "Planted canary in shared volume")
     t1_l4_details = t1_l4.get("details", "No foreign canaries detected")
 
+    if t1_l4_details.strip().casefold() == "no leaks detected in storage or environment":
+        t1_l4_details = (
+            "No foreign canaries detected in the tested /shared mount "
+            "or enumerated environment variables"
+        )
+
     # Topology metrics
     t0_mat_status = t0_mat.get("status", "DEVIATIONS")
     t1_mat_status = t1_mat.get("status", "ENFORCED")
@@ -115,21 +121,23 @@ def generate_results_markdown(
         ),
         "|---|---|---|---|---|---|",
         (
-            f"| **L1 Prefix-Cache Timing** | Hit/Miss AUC (CI <= 0.65, N=200) | "
+            "| **L1 Prefix-Cache Timing** | Hit/Miss AUC; "
+            "leak if lower 95% CI >= 0.65 OR recovery >= 5x chance (N=200) | "
             f"`{t0_l1_status}` (AUC: {t0_l1_auc:.2f}, CI: [{t0_l1_low:.2f}, {t0_l1_up:.2f}], "
             f"recovery: {t0_l1_rec:.1f}% vs chance {t0_l1_chance:.1f}%, N={t0_l1_trials}) | "
             f"`{t1_l1_status}` (AUC: {t1_l1_auc:.2f}, CI: [{t1_l1_low:.2f}, {t1_l1_up:.2f}], "
             f"recovery: {t1_l1_rec:.1f}% vs chance {t1_l1_chance:.1f}%, N={t1_l1_trials}) | "
-            f"Lower CI <= 0.65 | **{t1_l1_status}** |"
+            f"No signal: lower CI < 0.65 AND recovery < 5x chance | **{t1_l1_status}** |"
         ),
         (
-            f"| **L3 Verdict Fingerprint** | Single-Feature AUC (CI <= 0.65) | "
+            f"| **L3 Verdict Fingerprint** | Single-feature AUC; leak if lower 95% CI >= 0.65 | "
             f"`{t0_l3_status}` (AUC: {t0_l3_auc:.2f}, CI: {t0_l3_low:.2f}) | "
             f"`{t1_l3_status}` (AUC: {t1_l3_auc:.2f}, CI: {t1_l3_low:.2f}) | "
-            f"CI <= 0.65 | **{t1_l3_status}** |"
+            f"No signal: lower CI < 0.65 | **{t1_l3_status}** |"
         ),
         (
-            f"| **L4 Storage & Env Enum** | Foreign Canaries in `/shared` & Env | "
+            "| **L4 Storage & Env Enum** | Foreign canary search in tested `/shared` "
+            "mount & enumerated environment | "
             f"`{t0_l4_status}` ({t0_l4_details}) | "
             f"`{t1_l4_status}` ({t1_l4_details}) | "
             f"No foreign canaries | **{t1_l4_status}** |"

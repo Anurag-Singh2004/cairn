@@ -12,7 +12,7 @@
 
 | Run Role | Run ID | Tier | Engine | Findings | Final Checkpoint Root |
 |---|---|---|---|---|---|
-| **Leaky Baseline (Positive Control)** | `r_demo_t0` | T0 | `SIMULATED` | 12 | `31e2e33da57a95d7...` |
+| **Leaky Baseline (Positive Control)** | `r_demo_t0` | T0 | `SIMULATED` | 12 | `b74709043847cfe3...` |
 | **Hardened Isolation Tier** | `r_demo_t1` | T1 | `SIMULATED` | 12 | `7944db7ab44eaaa2...` |
 | **Fault Injection Run** | `r_demo_fault` | T1 | `SIMULATED` | 12 | `f0e6ff8edfe2bf27...` |
 
@@ -21,9 +21,9 @@
 ## 2. Statistical Side-Channel Probes (T0 vs T1 Contrast)
 | Property | Metric & Threshold | T0 Leaky Baseline | T1 Hardened Tier | Target / Rule | Result Status |
 |---|---|---|---|---|---|
-| **L1 Prefix-Cache Timing** | Hit/Miss AUC (CI <= 0.65, N=200) | `LEAK_DETECTED` (AUC: 1.00, CI: [1.00, 1.00], recovery: 100.0% vs chance 10.0%, N=200) | `NO_SIGNAL_AT_POWER` (AUC: 0.50, CI: [0.50, 0.50], recovery: 10.5% vs chance 10.0%, N=200) | Lower CI <= 0.65 | **NO_SIGNAL_AT_POWER** |
-| **L3 Verdict Fingerprint** | Single-Feature AUC (CI <= 0.65) | `LEAK_DETECTED` (AUC: 1.00, CI: 1.00) | `NO_SIGNAL_AT_POWER` (AUC: 0.50, CI: 0.50) | CI <= 0.65 | **NO_SIGNAL_AT_POWER** |
-| **L4 Storage & Env Enum** | Foreign Canaries in `/shared` & Env | `LEAK_DETECTED` (Found foreign canary canary_blue_99aa88bb in /shared/blue_policy_leak.txt; Found planted misconfiguration in /shared/blue_policy_leak.txt) | `NO_SIGNAL_AT_POWER` (No leaks detected in storage or environment) | No foreign canaries | **NO_SIGNAL_AT_POWER** |
+| **L1 Prefix-Cache Timing** | Hit/Miss AUC; leak if lower 95% CI >= 0.65 OR recovery >= 5x chance (N=200) | `LEAK_DETECTED` (AUC: 1.00, CI: [1.00, 1.00], recovery: 100.0% vs chance 10.0%, N=200) | `NO_SIGNAL_AT_POWER` (AUC: 0.50, CI: [0.50, 0.50], recovery: 10.5% vs chance 10.0%, N=200) | No signal: lower CI < 0.65 AND recovery < 5x chance | **NO_SIGNAL_AT_POWER** |
+| **L3 Verdict Fingerprint** | Single-feature AUC; leak if lower 95% CI >= 0.65 | `LEAK_DETECTED` (AUC: 1.00, CI: 1.00) | `NO_SIGNAL_AT_POWER` (AUC: 0.50, CI: 0.50) | No signal: lower CI < 0.65 | **NO_SIGNAL_AT_POWER** |
+| **L4 Storage & Env Enum** | Foreign canary search in tested `/shared` mount & enumerated environment | `LEAK_DETECTED` (Found foreign canary canary_blue_99aa88bb in /shared/blue_policy_leak.txt; Found planted misconfiguration in /shared/blue_policy_leak.txt) | `NO_SIGNAL_AT_POWER` (No foreign canaries detected in the tested /shared mount or enumerated environment variables) | No foreign canaries | **NO_SIGNAL_AT_POWER** |
 | **C3 Matrix Reachability** | N x N Allowed Topology | `DEVIATIONS` (10 deviations) | `ENFORCED` (0 deviations) | 0 deviations | **ENFORCED** |
 
 ---
