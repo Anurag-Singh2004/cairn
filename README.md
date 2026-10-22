@@ -1,6 +1,6 @@
 # CAIRN — Cryptographic Assurance & Isolation for Red-Team Networks
 
-[![Tests](https://img.shields.io/badge/tests-74%20passed%2C%201%20skipped-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-80%20passed%2C%201%20skipped-brightgreen.svg)]()
 [![Lint](https://img.shields.io/badge/ruff-passing-brightgreen.svg)]()
 [![Type](https://img.shields.io/badge/python-3.11%2B%20%7C%203.14-blue.svg)]()
 [![Hackathon](https://img.shields.io/badge/Hack%20in%20Hills%20'26-Round%202-orange.svg)]()
