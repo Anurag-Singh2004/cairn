@@ -107,12 +107,37 @@ def generate_finding_receipt(
 
 
 def save_receipt_file(receipt: Receipt | dict[str, Any], path: Path | str) -> Path:
-    """Save receipt object or dictionary as formatted JSON."""
+    """Save receipt object or dictionary as formatted JSON atomically."""
+    import os
+    import tempfile
+
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     data = receipt.model_dump() if hasattr(receipt, "model_dump") else receipt
-    out_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-    return out_path
+    content = json.dumps(data, indent=2, sort_keys=True)
+
+    tmp_file = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=out_path.parent,
+            prefix=f".{out_path.name}.tmp_",
+            delete=False,
+            encoding="utf-8",
+        ) as f:
+            tmp_file = Path(f.name)
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, out_path)
+        return out_path
+    except Exception:
+        if tmp_file and tmp_file.exists():
+            import contextlib
+
+            with contextlib.suppress(OSError):
+                tmp_file.unlink()
+        raise
 
 
 def generate_all_receipts_for_run(

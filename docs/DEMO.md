@@ -36,10 +36,10 @@
 > - And fourth, Switchboard's uniform envelopes and quantized release timing.
 >
 > Look at the auditor results:
-> The L1 cache timing leakage drops to AUC 0.50—no signal observed at test power.
-> The L3 verdict fingerprint drops to AUC 0.50—complete statistical noise.
-> And the L4 storage probe finds no foreign canaries.
-> Side channels are mitigated."
+> The L1 cache timing leakage drops to AUC 0.50—no signal was detected at the tested statistical power.
+> The L3 verdict fingerprint drops to AUC 0.50—no signal was detected at the tested statistical power.
+> And the evaluated probes detected no foreign canaries within their inspected scope.
+> Side channels show no signal at evaluated power."
 
 ---
 
@@ -71,7 +71,7 @@
 >
 > In Step 5, we test tampering. We mutate a single byte inside the evidence event.
 > Instantly, Step 2 catches the altered event hash, Step 3 rejects the Merkle proof, and `cairn verify` fails closed with exit code 1.
-> Receipts cannot be forged, reordered, or edited after the fact."
+> Single-byte mutations, reordering, and signature alterations are reliably detected and rejected."
 
 ---
 

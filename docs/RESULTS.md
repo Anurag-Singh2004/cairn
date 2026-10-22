@@ -12,9 +12,9 @@
 
 | Run Role | Run ID | Tier | Engine | Findings | Final Checkpoint Root |
 |---|---|---|---|---|---|
-| **Leaky Baseline (Positive Control)** | `r_demo_t0` | T0 | `SIMULATED` | 12 | `b74709043847cfe3...` |
-| **Hardened Isolation Tier** | `r_demo_t1` | T1 | `SIMULATED` | 12 | `7944db7ab44eaaa2...` |
-| **Fault Injection Run** | `r_demo_fault` | T1 | `SIMULATED` | 12 | `f0e6ff8edfe2bf27...` |
+| **Leaky Baseline (Positive Control)** | `r_demo_t0_20261022_080250` | T0 | `SIMULATED` | 12 | `79d1a799b1b43539...` |
+| **Hardened Isolation Tier** | `r_demo_t1_20261022_080250` | T1 | `SIMULATED` | 12 | `79507b8d2e96753f...` |
+| **Fault Injection Run** | `r_demo_fault_20261022_080250` | T1 | `SIMULATED` | 12 | `320c6919f1e440b7...` |
 
 ---
 

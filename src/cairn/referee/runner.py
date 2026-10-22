@@ -25,6 +25,7 @@ from cairn.auditor.l3_fingerprint import L3VerdictFingerprintProbe
 from cairn.auditor.l4_fs import L4FsProbe
 from cairn.auditor.matrix import audit_matrix
 from cairn.common.clock import WallClock
+from cairn.common.errors import EvidenceError
 from cairn.common.ids import make_finding_id, make_run_id, make_session_id
 from cairn.crypto.commit import compute_commit_blue, compute_commit_red, generate_nonce
 from cairn.crypto.keys import generate_keypair, load_private_key, public_key_to_b64, save_keypair
@@ -89,11 +90,19 @@ def run_benchmark(
     tier = tier.lower()
     actual_run_id = run_id or make_run_id()
     run_dir = Path(runs_root) / actual_run_id
+    db_path = run_dir / "evidence.db"
+    if db_path.exists():
+        raise EvidenceError(
+            f"Run ID '{actual_run_id}' already exists at {run_dir}. "
+            "A completed evidence database cannot be overwritten or silently appended to."
+        )
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Keys
     k_dir = Path(key_dir)
-    priv_file = k_dir / "ref_ed25519.pem"
+    priv_file = k_dir / "ref_ed25519.key"
+    if not priv_file.is_file():
+        priv_file = k_dir / "ref_ed25519.pem"
     if priv_file.is_file():
         privkey = load_private_key(priv_file)
         pubkey = privkey.public_key()

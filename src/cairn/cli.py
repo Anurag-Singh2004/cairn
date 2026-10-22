@@ -236,6 +236,26 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def select_demo_run_ids(runs_root: Path | str = "runs") -> tuple[str, str, str]:
+    """Select run IDs for demo, ensuring existing run evidence is preserved with unique IDs."""
+    import datetime
+
+    root = Path(runs_root)
+
+    def _choose_id(base: str) -> str:
+        if not (root / base / "evidence.db").exists():
+            return base
+        tag = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+        candidate = f"{base}_{tag}"
+        counter = 1
+        while (root / candidate / "evidence.db").exists():
+            candidate = f"{base}_{tag}_{counter}"
+            counter += 1
+        return candidate
+
+    return _choose_id("r_demo_t0"), _choose_id("r_demo_t1"), _choose_id("r_demo_fault")
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     """Execute full end-to-end demo workflow per context.md §14 and flow.md §5 M6."""
     import copy
@@ -250,27 +270,65 @@ def cmd_demo(args: argparse.Namespace) -> int:
     pack_path = Path("data/attack_packs/demo.json")
     policy_path = Path("data/policies/demo_blue.json")
 
-    # 1. Run T0 (leaky baseline positive control)
-    print("\n[Step 1/6] Running T0 Leaky Baseline Positive Control...")
-    t0_dir = run_benchmark("t0", pack_path, policy_path, run_id="r_demo_t0")
-    print(f"  T0 run completed: {t0_dir}")
+    t0_id, t1_id, fault_id = select_demo_run_ids("runs")
 
-    # 2. Run T1 (hardened tier)
-    print("\n[Step 2/6] Running T1 Hardened Isolation Tier...")
-    t1_dir = run_benchmark("t1", pack_path, policy_path, run_id="r_demo_t1")
-    print(f"  T1 run completed: {t1_dir}")
+    import time
 
-    # 3. Run Fault Injection Run (environmental interference)
-    print("\n[Step 3/6] Running Environmental Fault Injection Run (blue_timeout@f_005)...")
-    fault_dir = run_benchmark(
-        "t1",
-        pack_path,
-        policy_path,
-        fault_specs=["blue_timeout@f_005"],
-        burn_cpu=True,
-        run_id="r_demo_fault",
+    from cairn.referee.docker_ctl import (
+        check_docker_available,
+        compose_down,
+        compose_up,
+        is_tier_running,
     )
-    print(f"  Fault injection run completed: {fault_dir}")
+
+    docker_available, _ = check_docker_available()
+
+    # 1. Run T0 (leaky baseline positive control)
+    print(f"\n[Step 1/6] Running T0 Leaky Baseline Positive Control ({t0_id})...")
+    t0_started = False
+    if docker_available and not is_tier_running("t0"):
+        try:
+            compose_up("t0", timeout_s=60.0)
+            t0_started = True
+            time.sleep(1.0)
+        except Exception as e:
+            print(f"Warning: Could not start T0 containers: {e}", file=sys.stderr)
+    try:
+        t0_dir = run_benchmark("t0", pack_path, policy_path, run_id=t0_id)
+        print(f"  T0 run completed: {t0_dir}")
+    finally:
+        if t0_started:
+            compose_down("t0")
+
+    t1_started = False
+    if docker_available and not is_tier_running("t1"):
+        try:
+            compose_up("t1", timeout_s=60.0)
+            t1_started = True
+            time.sleep(1.0)
+        except Exception as e:
+            print(f"Warning: Could not start T1 containers: {e}", file=sys.stderr)
+
+    try:
+        # 2. Run T1 (hardened tier)
+        print(f"\n[Step 2/6] Running T1 Hardened Isolation Tier ({t1_id})...")
+        t1_dir = run_benchmark("t1", pack_path, policy_path, run_id=t1_id)
+        print(f"  T1 run completed: {t1_dir}")
+
+        # 3. Run Fault Injection Run (environmental interference)
+        print(f"\n[Step 3/6] Running Fault Injection Run (blue_timeout@f_005, {fault_id})...")
+        fault_dir = run_benchmark(
+            "t1",
+            pack_path,
+            policy_path,
+            fault_specs=["blue_timeout@f_005"],
+            burn_cpu=True,
+            run_id=fault_id,
+        )
+        print(f"  Fault injection run completed: {fault_dir}")
+    finally:
+        if t1_started:
+            compose_down("t1")
 
     # 4. Verify Untouched T1 Receipt
     print("\n[Step 4/6] Verifying Untouched T1 Finding Receipt...")

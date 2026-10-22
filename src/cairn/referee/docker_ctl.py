@@ -67,6 +67,7 @@ def compose_up(tier: str, build: bool = False, timeout_s: float = 60.0) -> None:
         cmd.append("--build")
     proc = subprocess.run(
         cmd,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=timeout_s,
@@ -91,6 +92,7 @@ def compose_down(tier: str, timeout_s: float = 30.0) -> None:
     ]
     subprocess.run(
         cmd,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=timeout_s,
@@ -122,6 +124,7 @@ def compose_exec(
     proc = subprocess.run(
         full_cmd,
         input=input_str,
+        stdin=subprocess.DEVNULL if input_str is None else None,
         capture_output=True,
         text=True,
         timeout=timeout_s,
@@ -144,7 +147,14 @@ def inspect_service_container(tier: str, service: str) -> dict[str, Any]:
         "-q",
         service,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5.0, check=False)
+    proc = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5.0,
+        check=False,
+    )
     cid = proc.stdout.strip()
     if not cid:
         raise PreflightError(f"Container for service '{service}' not found")
@@ -152,6 +162,7 @@ def inspect_service_container(tier: str, service: str) -> dict[str, Any]:
     inspect_cmd = ["docker", "inspect", cid]
     ins_proc = subprocess.run(
         inspect_cmd,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=5.0,
