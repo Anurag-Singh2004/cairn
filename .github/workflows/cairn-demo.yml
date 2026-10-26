@@ -57,7 +57,7 @@ jobs:
           from cairn.referee.report import generate_html_report
           from cairn.referee.evidence import EvidenceStore
           for t in ["t1", "t0"]:
-              runs = sorted(list(Path("runs").glob(f"r_demo_{t}_*")), key=lambda p: p.stat().st_mtime, reverse=True)
+              runs = sorted(list(Path("runs").glob(f"r_demo_{t}*")), key=lambda p: p.stat().st_mtime, reverse=True)
               if runs:
                   r_dir = runs[0]
                   db_file = r_dir / "evidence.db"
@@ -91,7 +91,7 @@ jobs:
           }
 
           for tier in ["t0", "t1", "fault"]:
-              runs = sorted(list(Path("runs").glob(f"r_demo_{tier}_*")), key=lambda p: p.stat().st_mtime, reverse=True)
+              runs = sorted(list(Path("runs").glob(f"r_demo_{tier}*")), key=lambda p: p.stat().st_mtime, reverse=True)
               if runs:
                   r = runs[0]
                   summary["tiers"][tier] = r.name

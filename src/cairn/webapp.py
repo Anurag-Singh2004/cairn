@@ -599,7 +599,7 @@ async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | No
                     continue
                 if not is_safe_artifact_file(norm_name):
                     continue
-                allowed_prefixes = ("RESULTS.md", "summary.json", "r_demo_", "report.html")
+                allowed_prefixes = ("RESULTS.md", "summary.json", "r_demo", "report.html")
                 if not any(norm_name.startswith(p) for p in allowed_prefixes):
                     continue
 
