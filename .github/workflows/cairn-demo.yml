@@ -1,0 +1,126 @@
+name: cairn-demo
+run-name: cairn-demo-${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: 'Unique correlation request ID'
+        required: true
+        type: string
+
+concurrency:
+  group: cairn-benchmark
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    name: Execute CAIRN Demo Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Generate referee signing keys if absent
+        run: |
+          python -m cairn.cli keygen --dir keys --name ref_ed25519
+
+      - name: Build Docker Compose tier images
+        run: |
+          docker compose -f compose/compose.t1.yml build
+
+      - name: Execute end-to-end benchmark demo
+        run: |
+          python -m cairn.cli demo
+
+      - name: Generate offline HTML reports for recorded runs
+        run: |
+          python -c '
+          from pathlib import Path
+          from cairn.referee.report import generate_html_report
+          from cairn.referee.evidence import EvidenceStore
+          for t in ["t1", "t0"]:
+              runs = sorted(list(Path("runs").glob(f"r_demo_{t}_*")), key=lambda p: p.stat().st_mtime, reverse=True)
+              if runs:
+                  r_dir = runs[0]
+                  db_file = r_dir / "evidence.db"
+                  if db_file.exists():
+                      store = EvidenceStore(db_file)
+                      generate_html_report(r_dir.name, store, r_dir / "report.html")
+                      print(f"Generated HTML report for {r_dir.name}")
+          '
+
+      - name: Package allowlisted benchmark artifacts
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          python -c '
+          import json, shutil, os
+          from pathlib import Path
+
+          req_id = os.environ.get("REQUEST_ID", "default")
+          out_dir = Path("dist/artifacts")
+          out_dir.mkdir(parents=True, exist_ok=True)
+
+          if Path("docs/RESULTS.md").exists():
+              shutil.copy("docs/RESULTS.md", out_dir / "RESULTS.md")
+
+          summary = {
+              "request_id": req_id,
+              "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "github_run_number": os.environ.get("GITHUB_RUN_NUMBER"),
+              "github_sha": os.environ.get("GITHUB_SHA"),
+              "tiers": {}
+          }
+
+          for tier in ["t0", "t1", "fault"]:
+              runs = sorted(list(Path("runs").glob(f"r_demo_{tier}_*")), key=lambda p: p.stat().st_mtime, reverse=True)
+              if runs:
+                  r = runs[0]
+                  summary["tiers"][tier] = r.name
+                  t_out = out_dir / r.name
+                  t_out.mkdir(parents=True, exist_ok=True)
+                  for f in ["results.json", "certificates.json", "report.html"]:
+                      src_f = r / f
+                      if src_f.exists():
+                          shutil.copy(src_f, t_out / f)
+                  receipts_src = r / "receipts"
+                  if receipts_src.exists():
+                      receipts_dst = t_out / "receipts"
+                      receipts_dst.mkdir(parents=True, exist_ok=True)
+                      for rc in receipts_src.glob("receipt_*.json"):
+                          shutil.copy(rc, receipts_dst / rc.name)
+
+          with open(out_dir / "summary.json", "w", encoding="utf-8") as sf:
+              json.dump(summary, sf, indent=2)
+
+          print("Packaged artifacts successfully:")
+          for p in out_dir.rglob("*"):
+              if p.is_file():
+                  print(f" - {p.relative_to(out_dir)}")
+          '
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cairn-artifacts-${{ inputs.request_id }}
+          path: dist/artifacts/
+          retention-days: 7
+          if-no-files-found: error

@@ -1,7 +1,19 @@
 services:
   - type: web
-    runtime: static
-    name: cairn-showcase
+    name: cairn-app
+    runtime: python
     branch: main
-    buildCommand: echo "No build step required"
-    staticPublishPath: site
+    buildCommand: pip install -e .
+    startCommand: uvicorn cairn.webapp:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: GITHUB_REPOSITORY
+        value: Anurag-Singh2004/cairn
+      - key: GITHUB_WORKFLOW_FILE
+        value: cairn-demo.yml
+      - key: GITHUB_REF
+        value: main
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: COOLDOWN_SECONDS
+        value: "600"

@@ -1,6 +1,6 @@
 # CAIRN — Cryptographic Assurance & Isolation for Red-Team Networks
 
-[![Tests](https://img.shields.io/badge/tests-80%20passed%2C%201%20skipped-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-93%20passed%2C%201%20skipped-brightgreen.svg)]()
 [![Lint](https://img.shields.io/badge/ruff-passing-brightgreen.svg)]()
 [![Type](https://img.shields.io/badge/python-3.11%2B%20%7C%203.14-blue.svg)]()
 [![Hackathon](https://img.shields.io/badge/Hack%20in%20Hills%20'26-Round%202-orange.svg)]()
@@ -67,6 +67,20 @@ make demo
 # 5. Verify an untouched receipt or test tamper rejection
 make verify RECEIPT=runs/r_demo_t1/receipts/receipt_f_001.json
 ```
+
+---
+
+## Live Interactive Deployment (Render + GitHub Actions)
+
+CAIRN includes a single-origin web application deployed on **Render** with on-demand, temporary **GitHub-hosted Ubuntu Actions runners** for heavy benchmark execution:
+
+- **Public Web Application:** Served by a FastAPI service (`cairn-app`, defined in `render.yaml`) that binds to `$PORT` and serves the responsive single-page evaluation console (`site/index.html`).
+- **On-Demand Benchmark Execution:** Evaluators can click **Run Live Demo** to dispatch the real assurance benchmark (`.github/workflows/cairn-demo.yml`) on an ephemeral GitHub-hosted runner with full Docker Compose and hardware probes.
+- **Genuine Step Tracking:** The frontend polls Render's REST API, querying real GitHub Actions job steps and stages—never fabricating progress timers or synthetic percentages.
+- **Safety & Cooldowns:** Deployment enforces a single active benchmark run, a configurable global cooldown (~10 min), per-client IP rate limits, and an explicit artifact whitelist (strictly excluding private signing keys and raw database files).
+- **Zero Configuration Fallback:** If GitHub credentials are not present, the application serves recorded reference results from `docs/RESULTS.md` labeled with an honest **Historical Reference Run** badge.
+
+For full deployment instructions, token permissions, and operational details, see [docs/DEPLOYMENT.md](file:///home/anurag/Projects/cairn/docs/DEPLOYMENT.md).
 
 ---
 
