@@ -3,6 +3,7 @@ keys/
 
 # Per-run output
 runs/
+data/artifact_cache/
 
 # Environment / secrets
 .env
