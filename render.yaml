@@ -1,0 +1,7 @@
+services:
+  - type: web
+    runtime: static
+    name: cairn-showcase
+    branch: main
+    buildCommand: echo "No build step required"
+    staticPublishPath: site

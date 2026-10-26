@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="CAIRN measures AI security isolation under adversarial testing and produces independently verifiable cryptographic evidence.">
+  <title>CAIRN — Verifiable AI Security Testing</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07111f;--panel:#0c1b2d;--panel2:#10243a;--line:#1b3851;--text:#edf6ff;--muted:#9fb3c8;--cyan:#62e7e2;--blue:#7cb8ff;--green:#79e2b3;--red:#ff8e91;--amber:#ffd58a;--max:1120px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at 78% -10%,rgba(20,112,135,.25),transparent 38%),radial-gradient(ellipse at 0% 18%,rgba(31,80,135,.18),transparent 32%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.6}
+    a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline} .wrap{width:min(var(--max),calc(100% - 40px));margin:auto}
+    header{border-bottom:1px solid rgba(133,186,219,.16);background:rgba(7,17,31,.78);backdrop-filter:blur(12px);position:sticky;top:0;z-index:10}.nav{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.11em;font-size:1.05rem}.mark{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--cyan);border-radius:10px;color:var(--cyan);font-weight:900;box-shadow:inset 0 0 18px rgba(98,231,226,.1)}.navlinks{display:flex;align-items:center;gap:22px;color:var(--muted);font-size:.9rem}.navlinks a{color:inherit}.navlinks .source{color:var(--cyan);border:1px solid #285166;border-radius:9px;padding:8px 12px}
+    .hero{padding:82px 0 58px}.eyebrow{display:inline-flex;align-items:center;gap:9px;padding:6px 11px;border:1px solid #245069;border-radius:99px;color:#b7e9ef;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;background:rgba(19,64,85,.28)}.dot{height:7px;width:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(121,226,179,.7)}h1{font-size:clamp(2.6rem,6vw,5.1rem);line-height:1.04;letter-spacing:-.055em;margin:22px 0;max-width:900px}h1 span{color:var(--cyan)}.lead{max-width:760px;font-size:1.16rem;color:#b6c8d9;line-height:1.75}.hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 0}.btn{display:inline-flex;align-items:center;gap:10px;padding:12px 17px;border-radius:10px;font-weight:700;font-size:.93rem;border:1px solid #2a546e}.btn.primary{background:var(--cyan);color:#04202a;border-color:var(--cyan)}.btn.secondary{background:rgba(12,27,45,.65);color:var(--text)}.fineprint{font-size:.82rem;color:#7f9bb4;margin-top:19px;max-width:900px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0 75px}.stat{padding:20px;border:1px solid var(--line);background:linear-gradient(145deg,rgba(15,37,58,.88),rgba(9,24,40,.88));border-radius:15px}.stat strong{font-size:2rem;letter-spacing:-.04em;display:block}.stat span{color:var(--muted);font-size:.85rem}
+    section{padding:0 0 72px;scroll-margin-top:100px}.section-head{max-width:730px;margin-bottom:25px}.kicker{font-size:.76rem;text-transform:uppercase;letter-spacing:.16em;color:var(--cyan);font-weight:800}.section-head h2{font-size:clamp(1.8rem,3vw,2.7rem);letter-spacing:-.04em;line-height:1.15;margin:9px 0 12px}.section-head p{color:var(--muted);margin:0}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:linear-gradient(160deg,rgba(15,35,56,.88),rgba(9,23,39,.94));border:1px solid var(--line);border-radius:16px;padding:22px}.num{display:inline-grid;place-items:center;width:35px;height:35px;border-radius:10px;background:#123147;color:var(--cyan);font-weight:800;margin-bottom:13px}.card h3{margin:0 0 9px;font-size:1.08rem}.card p{margin:0;color:var(--muted);font-size:.94rem}.tagrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.tag{font-size:.76rem;padding:4px 8px;border:1px solid #28485e;border-radius:6px;color:#bcd1e2;background:rgba(7,17,31,.35)}
+    .compare{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:rgba(9,23,39,.8)}.compare .topline{padding:18px 21px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.compare .topline strong{font-size:1rem}.hint{color:var(--muted);font-size:.82rem}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:16px 18px;border-bottom:1px solid rgba(39,69,93,.7);vertical-align:top}th{color:#9fb8cd;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;background:rgba(13,31,50,.8)}td{font-size:.91rem}td:first-child{font-weight:650;width:26%}tr:last-child td{border-bottom:0}.bad{color:var(--red)}.good{color:var(--green)}.warn{color:var(--amber)}.metric{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:750;font-size:.88rem;padding:3px 7px;background:#102d43;border-radius:6px;color:#d9f7ff}
+    .callout{border:1px solid #68532b;background:linear-gradient(120deg,rgba(78,57,21,.24),rgba(25,33,43,.85));padding:20px 22px;border-radius:14px;display:flex;gap:15px}.callout .symbol{color:var(--amber);font-size:1.5rem;line-height:1.3}.callout h3{margin:0 0 6px}.callout p{margin:0;color:#cfbd9b;font-size:.93rem}
+    .evidence-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px}.evidence-list{display:grid;gap:10px}.evidence-row{display:flex;gap:14px;padding:16px;border:1px solid var(--line);background:rgba(12,27,45,.78);border-radius:12px}.check{color:var(--green);font-weight:900;font-size:1.1rem}.evidence-row strong{display:block}.evidence-row span{display:block;color:var(--muted);font-size:.86rem;margin-top:3px}.codebox{padding:22px;border:1px solid #285166;border-radius:15px;background:#050d17;display:flex;flex-direction:column;justify-content:space-between;min-height:250px}.codebox .label{color:var(--cyan);font-size:.76rem;letter-spacing:.12em;text-transform:uppercase;font-weight:800}.codebox code{display:block;color:#d7f9f4;font-size:1.17rem;overflow-wrap:anywhere;margin:18px 0}.codebox p{font-size:.87rem;color:var(--muted);margin:0}
+    .docs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.doclink{display:block;text-decoration:none;border:1px solid var(--line);background:rgba(12,27,45,.72);padding:19px;border-radius:13px}.doclink strong{display:block;color:var(--text);margin-bottom:6px}.doclink span{font-size:.86rem;color:var(--muted)}.doclink:hover{border-color:#4eaeb5;text-decoration:none}
+    footer{border-top:1px solid rgba(133,186,219,.16);padding:25px 0 35px;color:#819ab0;font-size:.82rem}.foot{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap}.foot strong{color:#cde4f2}
+    @media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}.grid3,.docs{grid-template-columns:1fr}.evidence-grid{grid-template-columns:1fr}.navlinks{gap:12px}.navlinks a:not(.source){display:none}.hero{padding-top:55px}th,td{padding:12px 10px}.compare{overflow-x:auto}table{min-width:690px}}
+    @media(max-width:420px){.wrap{width:calc(100% - 26px)}.stats{gap:8px}.stat{padding:15px}.stat strong{font-size:1.65rem}.nav{min-height:62px}.brand{font-size:.95rem}.hero-actions .btn{width:100%;justify-content:center}}
+  </style>
+</head>
+<body>
+<header><div class="wrap nav"><a class="brand" href="#top" aria-label="CAIRN home"><span class="mark">C</span><span>CAIRN</span></a><nav class="navlinks" aria-label="Main navigation"><a href="#approach">Approach</a><a href="#results">Results</a><a href="#evidence">Evidence</a><a class="source" href="https://github.com/Anurag-Singh2004/cairn" target="_blank" rel="noreferrer">View source ↗</a></nav></div></header>
+<main id="top">
+  <div class="wrap">
+    <section class="hero" style="padding-bottom:28px">
+      <div class="eyebrow"><span class="dot"></span> Hack in Hills ’26 · Research prototype</div>
+      <h1>AI isolation should be <span>tested, measured,</span> and proven.</h1>
+      <p class="lead">CAIRN (Cryptographic Assurance &amp; Isolation for Red-Team Networks) is a security-testing harness that actively probes AI defense environments for leakage, checks fault handling, and produces cryptographically verifiable evidence.</p>
+      <div class="hero-actions"><a class="btn primary" href="#results">Explore benchmark results ↓</a><a class="btn secondary" href="https://github.com/Anurag-Singh2004/cairn/blob/main/docs/DEMO.md" target="_blank" rel="noreferrer">Read demo walkthrough ↗</a></div>
+      <p class="fineprint">Deployment note: this page presents the repository’s recorded reference run. It does not execute a new benchmark or claim that the full Docker isolation lab is running on Render.</p>
+    </section>
+    <div class="stats" aria-label="Project summary statistics">
+      <div class="stat"><strong>12</strong><span>Findings in each recorded run</span></div>
+      <div class="stat"><strong>3</strong><span>Leakage probes: L1, L3 and L4</span></div>
+      <div class="stat"><strong>0</strong><span>T1 network reachability deviations observed</span></div>
+      <div class="stat"><strong>5-step</strong><span>Offline receipt verification</span></div>
+    </div>
+
+    <section id="approach">
+      <div class="section-head"><div class="kicker">01 / The approach</div><h2>Make the security claim face a test.</h2><p>CAIRN compares a deliberately leaky positive control against a hardened configuration. If the probes cannot catch known weaknesses in the baseline, their clean result cannot be trusted.</p></div>
+      <div class="grid3">
+        <article class="card"><div class="num">01</div><h3>T0 · Leaky baseline</h3><p>A deliberately weak reference setup with flat networking and shared storage. It checks whether the audit harness detects planted problems.</p><div class="tagrow"><span class="tag">Positive control</span><span class="tag">Expected leakage</span></div></article>
+        <article class="card"><div class="num">02</div><h3>T1 · Hardened tier</h3><p>Docker services use isolated internal networks, non-root execution, read-only root filesystems and restricted capabilities.</p><div class="tagrow"><span class="tag">Network isolation</span><span class="tag">Least privilege</span></div></article>
+        <article class="card"><div class="num">03</div><h3>Verify the evidence</h3><p>Findings are recorded in an event chain and tied to signed checkpoints. An independent verifier checks each receipt offline.</p><div class="tagrow"><span class="tag">SHA-256</span><span class="tag">Merkle proofs</span><span class="tag">Ed25519</span></div></article>
+      </div>
+    </section>
+
+    <section id="results">
+      <div class="section-head"><div class="kicker">02 / Recorded reference results</div><h2>The baseline leaks. The hardened tier shows no detected signal at tested power.</h2><p>Values below are taken from the committed <code>docs/RESULTS.md</code> reference run. “No signal detected” is a bounded finding—not proof that leakage is impossible.</p></div>
+      <div class="compare"><div class="topline"><strong>T0 vs T1 · Reference run</strong><span class="hint">SimEngine · deterministic simulated backend</span></div><table><thead><tr><th>Test</th><th>T0 · Leaky baseline</th><th>T1 · Hardened tier</th><th>Interpretation</th></tr></thead><tbody>
+        <tr><td>L1 · Prefix-cache timing</td><td class="bad">Leak detected<br><span class="metric">AUC 1.00</span><br>100% recovery vs 10% chance</td><td class="good">No signal at tested power<br><span class="metric">AUC 0.50</span><br>10.5% recovery vs 10% chance</td><td>200 trials per class; leakage threshold uses the lower 95% CI and recovery rule.</td></tr>
+        <tr><td>L3 · Verdict fingerprint</td><td class="bad">Leak detected<br><span class="metric">AUC 1.00</span></td><td class="good">No signal at tested power<br><span class="metric">AUC 0.50</span></td><td>Checks whether observable response features distinguish defense verdicts.</td></tr>
+        <tr><td>L4 · Storage &amp; environment</td><td class="bad">Foreign canary found in planted shared-storage misconfiguration</td><td class="good">No foreign canary detected in inspected locations</td><td>Scope is limited to the inspected shared mount and enumerated environment.</td></tr>
+        <tr><td>C3 · Network reachability</td><td class="bad">10 deviations</td><td class="good">0 deviations</td><td>The recorded T1 topology audit found no unexpected reachability edges.</td></tr>
+        <tr><td>Fault injection</td><td class="bad">Fail-open positive control; finding quarantined</td><td class="good">Fail-closed; only f_005 quarantined</td><td>A simulated Blue Guard timeout is injected while CPU load is generated.</td></tr>
+      </tbody></table></div>
+    </section>
+
+    <section id="evidence">
+      <div class="section-head"><div class="kicker">03 / Evidence &amp; failure handling</div><h2>Findings are backed by verifiable artifacts.</h2><p>CAIRN is designed so reviewers do not need to trust a screenshot or a summary printed by the same process that performed the test.</p></div>
+      <div class="evidence-grid">
+        <div class="evidence-list">
+          <div class="evidence-row"><div class="check">✓</div><div><strong>Signed checkpoint</strong><span>Ed25519 signature over the recorded checkpoint.</span></div></div>
+          <div class="evidence-row"><div class="check">✓</div><div><strong>Append-only event integrity</strong><span>SHA-256 hashes link evidence events; altered event content breaks verification.</span></div></div>
+          <div class="evidence-row"><div class="check">✓</div><div><strong>Merkle inclusion proof</strong><span>Each receipt can be checked against the signed checkpoint root.</span></div></div>
+          <div class="evidence-row"><div class="check">✓</div><div><strong>Independent offline recomputation</strong><span>The verifier checks commitments and recomputes validity invariants from raw evidence.</span></div></div>
+        </div>
+        <div class="codebox"><div><div class="label">Run the full demo locally</div><code>make demo</code><p>From the CAIRN repository root, with Docker available. The workflow runs the T0 and T1 reference tiers, fault injection, receipt verification and the tampering check.</p></div><p style="margin-top:22px">Then inspect <code>docs/RESULTS.md</code> or verify a specific run using <code>make verify RUN=&lt;run-id&gt;</code>.</p></div>
+      </div>
+    </section>
+
+    <section id="limits">
+      <div class="callout"><div class="symbol">!</div><div><h3>Scope and limitations — read this before interpreting the numbers</h3><p>The committed reference runs use <strong>SimEngine</strong>, a deterministic simulated backend, not production LLM inference or real GPU execution. “NO_SIGNAL_AT_POWER” means no signal was detected under the stated sample sizes and inspected scope; it does not prove that all leakage is absent. Kernel exploits, physical hardware side channels and referee-key compromise are outside the stated scope. This Render page is a static, read-only showcase—not an online execution environment for the Docker-based assurance workflow.</p></div></div>
+    </section>
+
+    <section id="docs">
+      <div class="section-head"><div class="kicker">04 / Explore the project</div><h2>Code, results, threat model.</h2><p>Inspect the implementation and the assumptions behind the recorded findings.</p></div>
+      <div class="docs">
+        <a class="doclink" href="https://github.com/Anurag-Singh2004/cairn" target="_blank" rel="noreferrer"><strong>GitHub repository ↗</strong><span>Source code, tests, Docker Compose tiers and setup commands.</span></a>
+        <a class="doclink" href="https://github.com/Anurag-Singh2004/cairn/blob/main/docs/RESULTS.md" target="_blank" rel="noreferrer"><strong>Recorded results ↗</strong><span>Full T0/T1 comparison and evidence-verification summary.</span></a>
+        <a class="doclink" href="https://github.com/Anurag-Singh2004/cairn/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noreferrer"><strong>Threat model ↗</strong><span>Adversary capabilities, controls, guarantees and residual risks.</span></a>
+      </div>
+    </section>
+  </div>
+</main>
+<footer><div class="wrap foot"><span><strong>CAIRN</strong> · Cryptographic Assurance &amp; Isolation for Red-Team Networks</span><span>Hack in Hills ’26 · Research prototype · Static reference-results site</span></div></footer>
+</body>
+</html>
