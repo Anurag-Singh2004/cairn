@@ -295,3 +295,281 @@ async def test_parse_job_artifacts(tmp_path: Path):
     assert parsed["source"] == "Live GitHub Actions Run (cairn-demo-job_mock)"
     assert parsed["github_run_id"] == 1234
     assert parsed["t1_detailed"]["findings_total"] == 12
+
+
+# ============================================================================
+# Report HTML Endpoint Regression Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_invalid_job_id():
+    """Verify invalid job ID format returns HTTP 400."""
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.get("/api/jobs/bad..id/report.html")
+        assert resp.status_code == 400
+        assert "Invalid job ID format" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_present_in_cache(tmp_path: Path):
+    """Verify report already present in local cache is returned immediately."""
+    job_id = "cached_job_123"
+    job_dir = tmp_path / job_id
+    t1_dir = job_dir / "r_demo_t1_abc"
+    t1_dir.mkdir(parents=True)
+    report_content = "<html><body><h1>CAIRN Benchmark Report</h1></body></html>"
+    (t1_dir / "report.html").write_text(report_content, encoding="utf-8")
+
+    with patch.object(webapp, "CACHE_DIR", tmp_path):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 200
+            assert "text/html" in resp.headers["content-type"]
+            assert "CAIRN Benchmark Report" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_retrieved_from_github_when_cache_absent(tmp_path: Path):
+    """Verify report is downloaded and served when local cache is absent."""
+    job_id = "remote_job_456"
+    run_id = 998877
+
+    mock_run = {
+        "id": run_id,
+        "name": f"cairn-demo-{job_id}",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+    }
+
+    zip_buf = io.BytesIO()
+    report_html_text = "<html><body><h1>Remote Downloaded Report</h1></body></html>"
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("summary.json", '{"tiers": {"t1": "r_demo_t1_remote"}}')
+        zf.writestr("r_demo_t1_remote/report.html", report_html_text)
+    zip_bytes = zip_buf.getvalue()
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if "actions/workflows" in endpoint and "runs" in endpoint:
+            return httpx.Response(200, json={"workflow_runs": [mock_run]})
+        if endpoint == f"actions/runs/{run_id}/artifacts":
+            return httpx.Response(
+                200,
+                json={"artifacts": [{"id": 1122, "name": f"cairn-artifacts-{job_id}"}]},
+            )
+        if endpoint == "actions/artifacts/1122/zip":
+            return httpx.Response(200, content=zip_bytes)
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CACHE_DIR", tmp_path),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 200
+            assert "text/html" in resp.headers["content-type"]
+            assert "Remote Downloaded Report" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_cache_exists_but_report_missing(tmp_path: Path):
+    """Verify partial cache without report.html forces artifact download from GitHub."""
+    job_id = "partial_cache_job"
+    run_id = 887766
+
+    job_dir = tmp_path / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "summary.json").write_text('{"partial": true}', encoding="utf-8")
+
+    mock_run = {
+        "id": run_id,
+        "name": f"cairn-demo-{job_id}",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+    }
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("summary.json", '{"tiers": {}}')
+        zf.writestr("r_demo_t1/report.html", "<html><body>Recovered Partial Cache</body></html>")
+    zip_bytes = zip_buf.getvalue()
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if "actions/workflows" in endpoint and "runs" in endpoint:
+            return httpx.Response(200, json={"workflow_runs": [mock_run]})
+        if endpoint == f"actions/runs/{run_id}/artifacts":
+            return httpx.Response(
+                200,
+                json={"artifacts": [{"id": 3344, "name": f"cairn-artifacts-{job_id}"}]},
+            )
+        if endpoint == "actions/artifacts/3344/zip":
+            return httpx.Response(200, content=zip_bytes)
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CACHE_DIR", tmp_path),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 200
+            assert "Recovered Partial Cache" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_workflow_still_running(tmp_path: Path):
+    """Verify HTTP 409 is returned when workflow is still in progress."""
+    job_id = "running_job_777"
+    run_id = 777000
+
+    mock_run = {
+        "id": run_id,
+        "name": f"cairn-demo-{job_id}",
+        "status": "in_progress",
+        "conclusion": None,
+        "run_attempt": 1,
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if "actions/workflows" in endpoint and "runs" in endpoint:
+            return httpx.Response(200, json={"workflow_runs": [mock_run]})
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CACHE_DIR", tmp_path),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 409
+            assert "still in_progress" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_workflow_failed_or_cancelled(tmp_path: Path):
+    """Verify HTTP 400 is returned when workflow failed or was cancelled."""
+    job_id = "failed_job_888"
+    run_id = 888000
+
+    mock_run = {
+        "id": run_id,
+        "name": f"cairn-demo-{job_id}",
+        "status": "completed",
+        "conclusion": "failure",
+        "run_attempt": 1,
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if "actions/workflows" in endpoint and "runs" in endpoint:
+            return httpx.Response(200, json={"workflow_runs": [mock_run]})
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CACHE_DIR", tmp_path),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 400
+            assert "conclusion: 'failure'" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_successful_workflow_with_no_report_in_artifact(tmp_path: Path):
+    """Verify HTTP 404 when artifact downloads successfully but report.html is missing."""
+    job_id = "no_report_job"
+    run_id = 554433
+
+    mock_run = {
+        "id": run_id,
+        "name": f"cairn-demo-{job_id}",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+    }
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("summary.json", '{"tiers": {}}')
+        zf.writestr("RESULTS.md", "# Results")
+    zip_bytes = zip_buf.getvalue()
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if "actions/workflows" in endpoint and "runs" in endpoint:
+            return httpx.Response(200, json={"workflow_runs": [mock_run]})
+        if endpoint == f"actions/runs/{run_id}/artifacts":
+            return httpx.Response(
+                200,
+                json={"artifacts": [{"id": 9900, "name": f"cairn-artifacts-{job_id}"}]},
+            )
+        if endpoint == "actions/artifacts/9900/zip":
+            return httpx.Response(200, content=zip_bytes)
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CACHE_DIR", tmp_path),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 404
+            assert (
+                "Report HTML was not found in the completed workflow artifact"
+                in resp.json()["detail"]
+            )
+
+
+@pytest.mark.asyncio
+async def test_view_report_html_github_api_download_failure(tmp_path: Path):
+    """Verify HTTP 502 when GitHub API artifacts request fails."""
+    job_id = "dl_fail_job"
+    run_id = 665544
+
+    mock_run = {
+        "id": run_id,
+        "name": f"cairn-demo-{job_id}",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if "actions/workflows" in endpoint and "runs" in endpoint:
+            return httpx.Response(200, json={"workflow_runs": [mock_run]})
+        if endpoint == f"actions/runs/{run_id}/artifacts":
+            return httpx.Response(500, text="Internal GitHub Error")
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CACHE_DIR", tmp_path),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/api/jobs/{job_id}/report.html")
+            assert resp.status_code == 502
+            assert "Failed to retrieve artifact archive" in resp.json()["detail"]

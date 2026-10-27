@@ -1153,10 +1153,30 @@ async def get_workflow_logs(stream_id: str, after: int = 0, limit: int = 500) ->
 # --- Artifact Handling & Offline Verification ---
 
 
-async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | None:
+def _find_report_html(directory: Path) -> Path | None:
+    """Find the most relevant safe report.html file within directory tree."""
+    if not directory.is_dir():
+        return None
+    candidates = [
+        p for p in directory.rglob("report.html") if p.is_file() and is_safe_artifact_file(p)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda p: (
+            0 if "t1" in p.name.lower() or "t1" in str(p.parent).lower() else 1,
+            str(p),
+        )
+    )
+    return candidates[0]
+
+
+async def ensure_job_artifacts_downloaded(
+    job_id: str, run_id: int, force: bool = False
+) -> Path | None:
     """Download, safely unpack allowlisted files, and cache in memory."""
     target_dir = CACHE_DIR / job_id
-    if (target_dir / "summary.json").is_file():
+    if not force and (target_dir / "summary.json").is_file():
         return target_dir
 
     if not is_github_configured():
@@ -1191,15 +1211,16 @@ async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | No
                     continue
                 if not is_safe_artifact_file(norm_name):
                     continue
-                allowed_prefixes = ("RESULTS.md", "summary.json", "r_demo", "report.html")
+                allowed_prefixes = ("RESULTS.md", "summary.json", "r_demo", "r_", "report.html")
                 if not any(norm_name.startswith(p) for p in allowed_prefixes):
                     continue
 
                 zf.extract(member, target_dir)
 
-        parsed = parse_job_artifacts(target_dir, job_id)
-        LATEST_RUN_CACHE.clear()
-        LATEST_RUN_CACHE.update(parsed)
+        if (target_dir / "summary.json").is_file():
+            parsed = parse_job_artifacts(target_dir, job_id)
+            LATEST_RUN_CACHE.clear()
+            LATEST_RUN_CACHE.update(parsed)
         return target_dir
     except Exception as exc:
         logger.error(f"Failed to download/unpack artifacts for job {job_id}: {exc}")
@@ -1213,7 +1234,7 @@ async def get_job_results(job_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid job ID format.")
 
     target_dir = CACHE_DIR / job_id
-    if target_dir.is_dir():
+    if (target_dir / "summary.json").is_file():
         return parse_job_artifacts(target_dir, job_id)
 
     status_info = await get_job_status(job_id)
@@ -1239,7 +1260,8 @@ async def download_job_artifacts_zip(job_id: str) -> StreamingResponse:
         raise HTTPException(status_code=400, detail="Invalid job ID format.")
 
     target_dir = CACHE_DIR / job_id
-    if not target_dir.is_dir():
+    has_files = target_dir.is_dir() and any(target_dir.iterdir())
+    if not has_files:
         status_info = await get_job_status(job_id)
         run_id = status_info.get("github_run_id")
         is_done = status_info.get("status") == "completed"
@@ -1247,7 +1269,7 @@ async def download_job_artifacts_zip(job_id: str) -> StreamingResponse:
         if run_id and is_done and is_succ:
             await ensure_job_artifacts_downloaded(job_id, run_id)
 
-    if not target_dir.is_dir():
+    if not (target_dir.is_dir() and any(target_dir.iterdir())):
         raise HTTPException(status_code=404, detail="No artifacts available for download.")
 
     zip_buffer = io.BytesIO()
@@ -1271,16 +1293,61 @@ async def download_job_artifacts_zip(job_id: str) -> StreamingResponse:
 
 @app.get("/api/jobs/{job_id}/report.html")
 async def view_job_report_html(job_id: str) -> HTMLResponse:
-    """Serve offline HTML report for completed job."""
+    """Serve offline HTML report for completed job, retrieving from GitHub if absent from cache."""
     if not VALID_JOB_ID_REGEX.match(job_id):
         raise HTTPException(status_code=400, detail="Invalid job ID format.")
 
     target_dir = CACHE_DIR / job_id
-    if target_dir.is_dir():
-        for r_html in target_dir.rglob("report.html"):
-            return HTMLResponse(r_html.read_text(encoding="utf-8"))
+    report_file = _find_report_html(target_dir)
+    if report_file is not None:
+        return HTMLResponse(
+            content=report_file.read_text(encoding="utf-8"),
+            media_type="text/html; charset=utf-8",
+        )
 
-    raise HTTPException(status_code=404, detail="Report HTML not found for this job.")
+    # Report not present in local cache; look up workflow status
+    status_info = await get_job_status(job_id)
+    status = status_info.get("status")
+    conclusion = status_info.get("conclusion")
+    run_id = status_info.get("github_run_id")
+
+    if status != "completed":
+        st_desc = status or "running"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Workflow is still {st_desc}. Benchmark report is not yet available.",
+        )
+
+    if conclusion != "success":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Workflow ended with conclusion: '{conclusion}'. No report is available.",
+        )
+
+    if not run_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow run ID not found for this job.",
+        )
+
+    downloaded = await ensure_job_artifacts_downloaded(job_id, run_id, force=True)
+    if not downloaded:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to retrieve artifact archive from GitHub API.",
+        )
+
+    report_file = _find_report_html(downloaded)
+    if report_file is not None:
+        return HTMLResponse(
+            content=report_file.read_text(encoding="utf-8"),
+            media_type="text/html; charset=utf-8",
+        )
+
+    raise HTTPException(
+        status_code=404,
+        detail="Report HTML was not found in the completed workflow artifact for this job.",
+    )
 
 
 # --- Frontend Serving ---
