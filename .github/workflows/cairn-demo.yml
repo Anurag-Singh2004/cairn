@@ -22,6 +22,10 @@ jobs:
     name: Execute CAIRN Demo Benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CAIRN_LOG_INGEST_URL: ${{ vars.CAIRN_LOG_INGEST_URL }}
+      CAIRN_LOG_INGEST_TOKEN: ${{ secrets.CAIRN_LOG_INGEST_TOKEN }}
+      REQUEST_ID: ${{ inputs.request_id }}
 
     steps:
       - name: Checkout repository
@@ -40,19 +44,19 @@ jobs:
 
       - name: Generate referee signing keys if absent
         run: |
-          python -m cairn.cli keygen --dir keys --name ref_ed25519
+          python scripts/stream_action_logs.py --step "Generate Referee Keys" -- python -m cairn.cli keygen --dir keys --name ref_ed25519
 
       - name: Build Docker Compose tier images
         run: |
-          docker compose -f compose/compose.t1.yml build
+          python scripts/stream_action_logs.py --step "Build Docker Images" -- docker compose -f compose/compose.t1.yml build
 
       - name: Execute end-to-end benchmark demo
         run: |
-          python -m cairn.cli demo
+          python -u scripts/stream_action_logs.py --step "Execute Benchmark Demo" -- python -u -m cairn.cli demo
 
       - name: Generate offline HTML reports for recorded runs
         run: |
-          python -c '
+          python scripts/stream_action_logs.py --step "Generate HTML Reports" -- python -c '
           from pathlib import Path
           from cairn.referee.report import generate_html_report
           from cairn.referee.evidence import EvidenceStore
@@ -68,10 +72,8 @@ jobs:
           '
 
       - name: Package allowlisted benchmark artifacts
-        env:
-          REQUEST_ID: ${{ inputs.request_id }}
         run: |
-          python -c '
+          python scripts/stream_action_logs.py --step "Package Artifacts" -- python -c '
           import json, shutil, os
           from pathlib import Path
 

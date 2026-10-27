@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07111f">
-  <meta name="description" content="CAIRN measures AI security isolation under adversarial testing and produces independently verifiable cryptographic evidence.">
-  <title>CAIRN — Live Verifiable AI Security Testing</title>
+  <meta name="description" content="CAIRN — Live Security Testing terminal for adversarial AI defense benchmarking.">
+  <title>CAIRN — Live Security Testing</title>
   <style>
     :root {
       color-scheme: dark;
@@ -17,674 +17,662 @@
       --muted: #9fb3c8;
       --cyan: #62e7e2;
       --cyan-glow: rgba(98, 231, 226, 0.25);
-      --blue: #7cb8ff;
       --green: #79e2b3;
       --red: #ff8e91;
       --amber: #ffd58a;
+      --term-bg: #040c17;
+      --term-line: #13263b;
       --max: 1140px;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
-      margin: 0;
       background: radial-gradient(ellipse at 80% -10%, rgba(20, 112, 135, .25), transparent 42%),
                   radial-gradient(ellipse at 0% 20%, rgba(31, 80, 135, .20), transparent 35%),
                   var(--bg);
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.6;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     a { color: var(--cyan); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .wrap { width: min(var(--max), calc(100% - 40px)); margin: auto; }
+    .wrap { width: min(var(--max), calc(100% - 36px)); margin: auto; }
 
-    /* Header & Navigation */
+    /* Compact Header */
     header {
       border-bottom: 1px solid rgba(133, 186, 219, .16);
-      background: rgba(7, 17, 31, .85);
+      background: rgba(7, 17, 31, .88);
       backdrop-filter: blur(14px);
       position: sticky;
       top: 0;
       z-index: 100;
     }
-    .nav { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .11em; font-size: 1.05rem; }
+    .nav { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .08em; font-size: 1.05rem; color: var(--text); }
     .mark {
-      width: 32px; height: 32px; display: grid; place-items: center;
-      border: 1px solid var(--cyan); border-radius: 10px; color: var(--cyan);
-      font-weight: 900; box-shadow: inset 0 0 18px rgba(98, 231, 226, .1);
+      width: 30px; height: 30px; display: grid; place-items: center;
+      border: 1px solid var(--cyan); border-radius: 8px; color: var(--cyan);
+      font-weight: 900; box-shadow: inset 0 0 14px rgba(98, 231, 226, .12);
     }
-    .navlinks { display: flex; align-items: center; gap: 22px; color: var(--muted); font-size: .9rem; }
-    .navlinks a { color: inherit; }
-    .navlinks .source { color: var(--cyan); border: 1px solid #285166; border-radius: 9px; padding: 7px 12px; }
+    .nav-actions { display: flex; align-items: center; gap: 14px; }
+    .source-link {
+      color: var(--cyan); border: 1px solid #285166; border-radius: 8px;
+      padding: 6px 12px; font-size: .84rem; font-weight: 600;
+    }
 
-    /* Hero section */
-    .hero { padding: 68px 0 36px; }
+    /* Main Container */
+    main { flex: 1; padding: 32px 0 48px; }
+
+    /* Short Hero */
+    .hero { margin-bottom: 24px; }
     .eyebrow {
-      display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px;
+      display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px;
       border: 1px solid #245069; border-radius: 99px; color: #b7e9ef;
-      font-size: .78rem; letter-spacing: .08em; text-transform: uppercase;
-      background: rgba(19, 64, 85, .32);
+      font-size: .74rem; letter-spacing: .08em; text-transform: uppercase;
+      background: rgba(19, 64, 85, .32); margin-bottom: 12px;
     }
-    .dot { height: 8px; width: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(121, 226, 179, .8); }
-    .dot.amber { background: var(--amber); box-shadow: 0 0 12px rgba(255, 213, 138, .8); }
-    .dot.pulsing { animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
+    .dot { height: 7px; width: 7px; border-radius: 50%; background: var(--green); display: inline-block; }
+    .dot.amber { background: var(--amber); }
+    .dot.red { background: var(--red); }
+    .dot.pulsing { animation: pulse 1.4s infinite; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
-    h1 { font-size: clamp(2.5rem, 5.5vw, 4.6rem); line-height: 1.05; letter-spacing: -.05em; margin: 20px 0; max-width: 920px; }
+    h1 { font-size: clamp(1.8rem, 3.8vw, 2.7rem); line-height: 1.15; letter-spacing: -.03em; margin-bottom: 6px; }
     h1 span { color: var(--cyan); }
-    .lead { max-width: 780px; font-size: 1.15rem; color: #b6c8d9; line-height: 1.7; margin-bottom: 24px; }
+    .lead { font-size: 1.02rem; color: #b6c8d9; max-width: 720px; line-height: 1.5; }
 
-    /* Interactive Live Demo Console */
-    .live-console {
-      border: 1px solid #285166;
-      background: linear-gradient(155deg, rgba(16, 38, 62, 0.95), rgba(9, 23, 38, 0.98));
-      border-radius: 18px;
-      padding: 26px;
-      margin: 28px 0 45px;
-      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
-    }
-    .console-top {
+    /* Action Controls Bar */
+    .controls-bar {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
       flex-wrap: wrap;
-      gap: 16px;
-      border-bottom: 1px solid rgba(133, 186, 219, .15);
-      padding-bottom: 20px;
-      margin-bottom: 20px;
-    }
-    .console-title { font-size: 1.15rem; font-weight: 750; color: var(--text); display: flex; align-items: center; gap: 10px; }
-    .status-pill {
-      font-size: .8rem;
-      padding: 5px 12px;
-      border-radius: 99px;
-      background: rgba(12, 27, 45, .8);
-      border: 1px solid var(--line);
-      color: var(--muted);
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-    }
-    .status-pill.ready { border-color: rgba(121, 226, 179, 0.4); color: var(--green); }
-    .status-pill.cooldown { border-color: rgba(255, 213, 138, 0.4); color: var(--amber); }
-    .status-pill.busy { border-color: rgba(98, 231, 226, 0.4); color: var(--cyan); }
-
-    .console-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-    .btn {
-      display: inline-flex; align-items: center; gap: 10px; padding: 12px 20px;
-      border-radius: 10px; font-weight: 750; font-size: .95rem; border: 1px solid #2a546e;
-      cursor: pointer; transition: all .18s ease; text-decoration: none;
-    }
-    .btn.primary {
-      background: var(--cyan); color: #04202a; border-color: var(--cyan);
-      box-shadow: 0 4px 18px var(--cyan-glow);
-    }
-    .btn.primary:hover:not(:disabled) { background: #7ff4ef; transform: translateY(-1px); }
-    .btn.secondary { background: rgba(12, 27, 45, .8); color: var(--text); }
-    .btn.secondary:hover:not(:disabled) { background: rgba(22, 45, 72, .9); }
-    .btn:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
-
-    /* Live Job Tracker Card */
-    .job-tracker {
-      background: #06111e;
+      gap: 12px;
+      background: rgba(12, 27, 45, 0.75);
       border: 1px solid var(--line);
       border-radius: 12px;
-      padding: 18px 20px;
-      margin-top: 18px;
-      display: none;
+      padding: 14px 18px;
+      margin-bottom: 20px;
     }
-    .job-tracker.active { display: block; }
-    .job-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: .88rem; }
-    .stage-msg { font-size: .98rem; font-weight: 600; color: #d7f9f4; margin: 6px 0; }
-    .stage-details { font-size: .82rem; color: var(--muted); }
-    .job-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .controls-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .controls-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-    /* Notification banner */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px;
+      border-radius: 8px; font-weight: 700; font-size: .88rem; border: 1px solid #2a546e;
+      cursor: pointer; transition: all .16s ease; text-decoration: none; color: var(--text);
+      background: rgba(16, 36, 58, .85);
+    }
+    .btn:hover:not(:disabled) { background: rgba(25, 52, 82, .9); }
+    .btn.primary {
+      background: var(--cyan); color: #04202a; border-color: var(--cyan);
+      box-shadow: 0 2px 14px var(--cyan-glow);
+    }
+    .btn.primary:hover:not(:disabled) { background: #7ff4ef; transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+    .status-badge {
+      font-size: .8rem; padding: 5px 11px; border-radius: 99px;
+      background: rgba(7, 17, 31, .8); border: 1px solid var(--line);
+      color: var(--muted); display: inline-flex; align-items: center; gap: 6px;
+    }
+    .status-badge.ready { border-color: rgba(121, 226, 179, 0.35); color: var(--green); }
+    .status-badge.cooldown { border-color: rgba(255, 213, 138, 0.35); color: var(--amber); }
+    .status-badge.running { border-color: rgba(98, 231, 226, 0.35); color: var(--cyan); }
+
+    /* Workflow Selector */
+    .selector-label { font-size: .82rem; color: var(--muted); font-weight: 600; }
+    .workflow-select {
+      background: #06111e; color: var(--text); border: 1px solid #285166;
+      border-radius: 8px; padding: 8px 12px; font-size: .86rem; font-family: inherit;
+      outline: none; cursor: pointer; min-width: 260px; max-width: 420px;
+    }
+    .workflow-select:focus { border-color: var(--cyan); }
+
+    /* Terminal Console */
+    .terminal-container {
+      background: var(--term-bg);
+      border: 1px solid #285166;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+    }
+    .terminal-header {
+      background: #091728;
+      border-bottom: 1px solid var(--term-line);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .terminal-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: .84rem;
+      font-weight: 650;
+      color: #bcd1e2;
+    }
+    .term-dots { display: flex; gap: 6px; }
+    .term-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .term-dot.r { background: #ff5f56; }
+    .term-dot.y { background: #ffbd2e; }
+    .term-dot.g { background: #27c93f; }
+
+    .terminal-meta { display: flex; align-items: center; gap: 10px; font-size: .8rem; }
+    .pill {
+      padding: 3px 8px; border-radius: 6px; font-size: .75rem; font-weight: 700;
+      background: #11283d; color: var(--cyan); text-transform: uppercase; letter-spacing: .06em;
+    }
+    .pill.in_progress { background: rgba(98, 231, 226, .15); color: var(--cyan); }
+    .pill.completed { background: rgba(121, 226, 179, .15); color: var(--green); }
+    .pill.failed { background: rgba(255, 142, 145, .15); color: var(--red); }
+
+    .terminal-actions { display: flex; align-items: center; gap: 8px; }
+    .btn-icon {
+      background: rgba(16, 36, 58, 0.6);
+      border: 1px solid #24465d;
+      color: #bcd1e2;
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: .78rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .btn-icon:hover { background: #163650; color: #fff; }
+
+    /* Log Output Area */
+    .terminal-body {
+      padding: 14px 18px;
+      height: 520px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: .84rem;
+      line-height: 1.6;
+      background: var(--term-bg);
+      color: #dbeaff;
+    }
+    .terminal-body::-webkit-scrollbar { width: 8px; }
+    .terminal-body::-webkit-scrollbar-track { background: #040c17; }
+    .terminal-body::-webkit-scrollbar-thumb { background: #1b3851; border-radius: 4px; }
+
+    .log-line { display: flex; gap: 12px; word-break: break-all; white-space: pre-wrap; }
+    .log-seq { color: #436380; font-size: .76rem; user-select: none; min-width: 34px; text-align: right; }
+    .log-time { color: #5a7b99; font-size: .76rem; user-select: none; }
+    .log-step { color: var(--cyan); font-weight: 600; font-size: .78rem; }
+    .log-text { flex: 1; }
+    .log-line.warn .log-text { color: var(--amber); }
+    .log-line.err .log-text { color: var(--red); }
+    .log-line.highlight .log-text { color: #9effec; font-weight: 600; }
+
+    .terminal-empty {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #65829d;
+      text-align: center;
+      gap: 10px;
+      font-family: Inter, sans-serif;
+    }
+    .terminal-empty svg { opacity: 0.4; }
+
+    /* Notification Banner */
     .banner {
-      padding: 12px 16px; border-radius: 10px; font-size: .88rem; margin: 12px 0; display: none;
+      padding: 10px 14px; border-radius: 8px; font-size: .84rem; margin-bottom: 16px; display: none;
     }
     .banner.error { background: rgba(255, 142, 145, .15); border: 1px solid #752829; color: #ffb8b9; display: block; }
     .banner.warn { background: rgba(255, 213, 138, .15); border: 1px solid #7a632e; color: #ffd58a; display: block; }
     .banner.success { background: rgba(121, 226, 179, .15); border: 1px solid #23684a; color: #a4f2cb; display: block; }
 
-    /* Stats Grid */
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 20px 0 65px; }
-    .stat {
-      padding: 22px; border: 1px solid var(--line);
-      background: linear-gradient(145deg, rgba(15, 37, 58, .88), rgba(9, 24, 40, .88));
-      border-radius: 15px;
-    }
-    .stat strong { font-size: 2.1rem; letter-spacing: -.04em; display: block; color: #fff; }
-    .stat span { color: var(--muted); font-size: .86rem; }
-
-    /* Sections */
-    section { padding: 0 0 65px; scroll-margin-top: 90px; }
-    .section-head { max-width: 760px; margin-bottom: 24px; }
-    .kicker { font-size: .78rem; text-transform: uppercase; letter-spacing: .16em; color: var(--cyan); font-weight: 800; }
-    .section-head h2 { font-size: clamp(1.8rem, 3.2vw, 2.7rem); letter-spacing: -.04em; line-height: 1.15; margin: 8px 0 10px; }
-    .section-head p { color: var(--muted); margin: 0; font-size: 1.02rem; }
-
-    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .card {
-      background: linear-gradient(160deg, rgba(15, 35, 56, .88), rgba(9, 23, 39, .94));
-      border: 1px solid var(--line); border-radius: 16px; padding: 24px;
-    }
-    .num {
-      display: inline-grid; place-items: center; width: 36px; height: 36px;
-      border-radius: 10px; background: #123147; color: var(--cyan); font-weight: 800; margin-bottom: 14px;
-    }
-    .card h3 { margin: 0 0 8px; font-size: 1.12rem; }
-    .card p { margin: 0; color: var(--muted); font-size: .93rem; }
-    .tagrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-    .tag { font-size: .76rem; padding: 4px 9px; border: 1px solid #28485e; border-radius: 6px; color: #bcd1e2; background: rgba(7, 17, 31, .35); }
-
-    /* Compare Table */
-    .compare {
-      border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
-      background: rgba(9, 23, 39, .88);
-    }
-    .compare .topline {
-      padding: 18px 22px; border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-    }
-    .topline-title { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; }
-    .badge {
-      display: inline-block; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em;
-      padding: 3px 8px; border-radius: 6px; font-weight: 750;
-    }
-    .badge.historical { background: rgba(255, 213, 138, .18); border: 1px solid #8f7236; color: var(--amber); }
-    .badge.live { background: rgba(98, 231, 226, .18); border: 1px solid #247571; color: var(--cyan); }
-
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 16px 20px; border-bottom: 1px solid rgba(39, 69, 93, .7); vertical-align: top; }
-    th { color: #9fb8cd; font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; background: rgba(13, 31, 50, .85); }
-    td { font-size: .92rem; }
-    td:first-child { font-weight: 650; width: 25%; }
-    tr:last-child td { border-bottom: 0; }
-    .bad { color: var(--red); font-weight: 650; }
-    .good { color: var(--green); font-weight: 650; }
-    .metric {
-      display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-weight: 700; font-size: .86rem; padding: 3px 7px; background: #102d43; border-radius: 6px; color: #d9f7ff; margin-top: 4px;
-    }
-
-    /* Evidence & Callout */
-    .callout {
-      border: 1px solid #68532b; background: linear-gradient(120deg, rgba(78, 57, 21, .25), rgba(25, 33, 43, .85));
-      padding: 22px 24px; border-radius: 14px; display: flex; gap: 16px; margin: 30px 0;
-    }
-    .callout .symbol { color: var(--amber); font-size: 1.5rem; line-height: 1.2; }
-    .callout h3 { margin: 0 0 6px; font-size: 1.05rem; }
-    .callout p { margin: 0; color: #cfbd9b; font-size: .92rem; line-height: 1.6; }
-
-    .evidence-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 18px; }
-    .evidence-list { display: grid; gap: 12px; }
-    .evidence-row { display: flex; gap: 14px; padding: 16px; border: 1px solid var(--line); background: rgba(12, 27, 45, .78); border-radius: 12px; }
-    .check { color: var(--green); font-weight: 900; font-size: 1.15rem; }
-    .evidence-row strong { display: block; font-size: .95rem; }
-    .evidence-row span { display: block; color: var(--muted); font-size: .86rem; margin-top: 3px; }
-
-    .codebox {
-      padding: 24px; border: 1px solid #285166; border-radius: 15px; background: #050d17;
-      display: flex; flex-direction: column; justify-content: space-between;
-    }
-    .codebox .label { color: var(--cyan); font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 800; }
-    .codebox code { display: block; color: #d7f9f4; font-size: 1.2rem; margin: 18px 0; font-family: ui-monospace, Menlo, monospace; }
-    .codebox p { font-size: .87rem; color: var(--muted); margin: 0; }
-
-    .docs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-    .doclink {
-      display: block; border: 1px solid var(--line); background: rgba(12, 27, 45, .75);
-      padding: 20px; border-radius: 14px; transition: border-color .15s ease;
-    }
-    .doclink strong { display: block; color: var(--text); margin-bottom: 6px; font-size: 1rem; }
-    .doclink span { font-size: .86rem; color: var(--muted); }
-    .doclink:hover { border-color: #4eaeb5; text-decoration: none; }
-
+    /* Footer */
     footer {
-      border-top: 1px solid rgba(133, 186, 219, .16); padding: 30px 0 45px;
-      color: #819ab0; font-size: .84rem;
+      border-top: 1px solid rgba(133, 186, 219, .14);
+      padding: 20px 0;
+      color: #7b94aa;
+      font-size: .82rem;
     }
-    .foot { display: flex; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
-    .foot strong { color: #cde4f2; }
+    .foot-wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 
-    @media(max-width: 860px) {
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .grid3, .docs, .evidence-grid { grid-template-columns: 1fr; }
-      .navlinks a:not(.source) { display: none; }
-      .hero { padding-top: 45px; }
-      .compare { overflow-x: auto; }
-      table { min-width: 680px; }
-    }
-    @media(max-width: 440px) {
-      .wrap { width: calc(100% - 24px); }
-      .stats { gap: 10px; }
-      .stat { padding: 16px; }
-      .btn { width: 100%; justify-content: center; }
+    @media (max-width: 768px) {
+      .workflow-select { width: 100%; max-width: 100%; }
+      .controls-bar { flex-direction: column; align-items: stretch; }
+      .controls-left, .controls-right { width: 100%; justify-content: space-between; }
+      .btn { justify-content: center; width: 100%; }
+      .terminal-body { height: 420px; }
+      .log-time { display: none; }
     }
   </style>
 </head>
 <body>
+
 <header>
   <div class="wrap nav">
-    <a class="brand" href="#top" aria-label="CAIRN Home">
+    <a class="brand" href="/" aria-label="CAIRN Home">
       <span class="mark">C</span>
       <span>CAIRN</span>
     </a>
-    <nav class="navlinks" aria-label="Main navigation">
-      <a href="#demo">Live Demo</a>
-      <a href="#results">Results</a>
-      <a href="#evidence">Evidence</a>
-      <a href="#docs">Documentation</a>
-      <a class="source" href="https://github.com/Anurag-Singh2004/cairn" target="_blank" rel="noreferrer">View Source ↗</a>
-    </nav>
+    <div class="nav-actions">
+      <span id="headerStatus" class="status-badge ready">
+        <span class="dot" id="headerDot"></span>
+        <span id="headerStatusText">Connecting...</span>
+      </span>
+      <a class="source-link" href="https://github.com/Anurag-Singh2004/cairn" target="_blank" rel="noreferrer">
+        GitHub ↗
+      </a>
+    </div>
   </div>
 </header>
 
-<main id="top">
+<main>
   <div class="wrap">
-    <!-- Hero Section -->
+    <!-- Short Hero -->
     <section class="hero">
-      <div class="eyebrow"><span class="dot"></span> Hack in Hills ’26 · Security Assurance</div>
-      <h1>AI isolation should be <span>tested, measured,</span> and proven.</h1>
+      <div class="eyebrow"><span class="dot pulsing"></span> Real-Time Output Stream</div>
+      <h1>CAIRN — <span>Live Security Testing</span></h1>
       <p class="lead">
-        <strong>CAIRN</strong> (Cryptographic Assurance &amp; Isolation for Red-Team Networks) is an automated security-testing harness. It runs adversarial leakage probes against defense environments, verifies fault handling, and produces independently verifiable cryptographic evidence.
+        Run security benchmarks and watch their actual GitHub Actions output in real time.
       </p>
-
-      <!-- Interactive Demo Console -->
-      <div class="live-console" id="demo">
-        <div class="console-top">
-          <div>
-            <div class="console-title">Live Benchmark Execution Console</div>
-            <div style="font-size: .88rem; color: var(--muted); margin-top: 4px;">
-              Executes the complete CAIRN assurance suite on an on-demand GitHub-hosted Ubuntu runner.
-            </div>
-          </div>
-          <div id="systemStatusPill" class="status-pill ready">
-            <span class="dot" id="systemStatusDot"></span>
-            <span id="systemStatusText">Checking system status...</span>
-          </div>
-        </div>
-
-        <div id="consoleBanner" class="banner"></div>
-
-        <div class="console-actions">
-          <button id="runDemoBtn" class="btn primary" onclick="startLiveDemo()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            <span>Run Live Demo</span>
-          </button>
-          <a id="downloadArtifactsBtn" class="btn secondary" href="/api/latest" target="_blank" style="display:none">
-            Download Results (.json)
-          </a>
-          <a id="viewReportBtn" class="btn secondary" href="#" target="_blank" style="display:none">
-            View Offline HTML Report ↗
-          </a>
-        </div>
-
-        <!-- Live Job Status Tracking -->
-        <div id="jobTracker" class="job-tracker">
-          <div class="job-header">
-            <div>
-              <strong style="color: var(--cyan);">Benchmark Run in Progress</strong>
-              <span id="trackerJobId" style="color: var(--muted); margin-left: 8px;"></span>
-            </div>
-            <div id="trackerDuration" style="color: var(--muted);">Running...</div>
-          </div>
-          <div class="stage-msg" id="trackerStage">Queued in GitHub Actions...</div>
-          <div class="stage-details" id="trackerDetails">Waiting for runner allocation and container setup.</div>
-          <div class="job-actions">
-            <a id="trackerGithubLink" class="btn secondary" href="#" target="_blank" style="padding: 7px 12px; font-size: .82rem; display: none;">
-              Inspect GitHub Actions Run ↗
-            </a>
-          </div>
-        </div>
-      </div>
     </section>
 
-    <!-- Project Metrics -->
-    <div class="stats" aria-label="Project summary statistics">
-      <div class="stat"><strong>12</strong><span>Findings tested in each recorded run</span></div>
-      <div class="stat"><strong>3</strong><span>Side-channel leakage probes (L1, L3, L4)</span></div>
-      <div class="stat"><strong>0</strong><span>T1 network topology reachability deviations</span></div>
-      <div class="stat"><strong>5-step</strong><span>Offline cryptographic receipt verification</span></div>
+    <div id="noticeBanner" class="banner"></div>
+
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+      <div class="controls-left">
+        <button id="runDemoBtn" class="btn primary" onclick="dispatchDemo()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <span id="runDemoBtnText">Run Live Demo</span>
+        </button>
+
+        <label class="selector-label" for="workflowSelect">Stream:</label>
+        <select id="workflowSelect" class="workflow-select" onchange="onSelectWorkflow()">
+          <option value="">Loading workflow runs...</option>
+        </select>
+      </div>
+
+      <div class="controls-right">
+        <a id="downloadArtifactsBtn" class="btn" href="#" target="_blank" style="display: none;">
+          Download Results (.zip)
+        </a>
+        <a id="viewReportBtn" class="btn" href="#" target="_blank" style="display: none;">
+          View Report ↗
+        </a>
+        <a id="githubRunLink" class="btn" href="#" target="_blank" style="display: none;">
+          View in GitHub ↗
+        </a>
+      </div>
     </div>
 
-    <!-- The Approach -->
-    <section id="approach">
-      <div class="section-head">
-        <div class="kicker">01 / The Approach</div>
-        <h2>Make the security claim face a test.</h2>
-        <p>CAIRN compares a deliberately leaky positive control against a hardened isolation configuration. If the harness cannot catch planted leaks in the baseline, clean results cannot be trusted.</p>
-      </div>
-      <div class="grid3">
-        <article class="card">
-          <div class="num">01</div>
-          <h3>T0 · Leaky Baseline</h3>
-          <p>A deliberately weak reference setup with flat networking and shared storage. Proves the test suite detects planted side channels and fault leakage.</p>
-          <div class="tagrow"><span class="tag">Positive control</span><span class="tag">Expected leakage</span></div>
-        </article>
-        <article class="card">
-          <div class="num">02</div>
-          <h3>T1 · Hardened Tier</h3>
-          <p>Docker services execute with isolated bridge networks, non-root users (UID 10001), read-only root filesystems, dropped Linux capabilities, and quantized deadlines.</p>
-          <div class="tagrow"><span class="tag">Network isolation</span><span class="tag">Least privilege</span><span class="tag">Fail-closed</span></div>
-        </article>
-        <article class="card">
-          <div class="num">03</div>
-          <h3>Cryptographic Proof</h3>
-          <p>Audit events form an append-only SHA-256 hash chain anchored to Ed25519-signed checkpoints. Verifiers inspect Merkle paths offline without trusting the runner.</p>
-          <div class="tagrow"><span class="tag">Ed25519</span><span class="tag">SHA-256</span><span class="tag">RFC 6962 Merkle</span></div>
-        </article>
-      </div>
-    </section>
-
-    <!-- Results Table -->
-    <section id="results">
-      <div class="section-head">
-        <div class="kicker">02 / Verified Results</div>
-        <h2>The baseline leaks. The hardened tier shows no detected signal at tested power.</h2>
-        <p>Values below are dynamically retrieved from the latest verified run. “No signal detected” is a mathematically bounded finding—not proof that leakage is impossible.</p>
-      </div>
-
-      <div class="compare">
-        <div class="topline">
-          <div class="topline-title">
-            <span>T0 vs T1 Assurance Contrast</span>
-            <span id="resultsSourceBadge" class="badge historical">Historical Reference Run</span>
+    <!-- Main Terminal Console -->
+    <div class="terminal-container">
+      <div class="terminal-header">
+        <div class="terminal-title">
+          <div class="term-dots">
+            <span class="term-dot r"></span>
+            <span class="term-dot y"></span>
+            <span class="term-dot g"></span>
           </div>
-          <div style="font-size: .84rem; color: var(--muted);" id="resultsMeta">
-            Model: SimEngine (Deterministic Backend)
-          </div>
+          <span id="terminalTitleText">Live Benchmark Execution Console</span>
+          <span id="terminalStepPill" class="pill" style="display: none;">Step</span>
+          <span id="terminalStatusPill" class="pill">IDLE</span>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Security Control / Probe</th>
-              <th>T0 · Leaky Baseline</th>
-              <th>T1 · Hardened Tier</th>
-              <th>Interpretation &amp; Threshold</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>L1 · Prefix-Cache Timing</td>
-              <td class="bad" id="l1-t0">
-                Leak detected<br><span class="metric">AUC 1.00</span><br>100% recovery vs 10% chance
-              </td>
-              <td class="good" id="l1-t1">
-                No signal at tested power<br><span class="metric">AUC 0.50</span><br>10.5% recovery vs 10% chance
-              </td>
-              <td>200 trials per class. Leakage detected if lower 95% CI ≥ 0.65 or recovery ≥ 5x chance.</td>
-            </tr>
-            <tr>
-              <td>L3 · Verdict Fingerprint</td>
-              <td class="bad" id="l3-t0">
-                Leak detected<br><span class="metric">AUC 1.00</span>
-              </td>
-              <td class="good" id="l3-t1">
-                No signal at tested power<br><span class="metric">AUC 0.50</span>
-              </td>
-              <td>Probes whether response timing/size distinguishes defense verdicts. Threshold: lower CI ≥ 0.65.</td>
-            </tr>
-            <tr>
-              <td>L4 · Storage &amp; Env Canary</td>
-              <td class="bad" id="l4-t0">
-                Foreign canary found in planted shared storage
-              </td>
-              <td class="good" id="l4-t1">
-                No foreign canaries detected in inspected mount/env
-              </td>
-              <td>Scope is limited to inspected shared mount and enumerated container environment variables.</td>
-            </tr>
-            <tr>
-              <td>C3 · Network Reachability</td>
-              <td class="bad" id="c3-t0">
-                10 deviations
-              </td>
-              <td class="good" id="c3-t1">
-                0 deviations
-              </td>
-              <td>Full N x N container reachability matrix. T1 strictly isolates red and model tenants.</td>
-            </tr>
-            <tr>
-              <td>Environmental Fault Injection</td>
-              <td class="bad" id="fault-t0">
-                Fail-open positive control; finding quarantined (I9)
-              </td>
-              <td class="good" id="fault-t1">
-                Fail-closed; generic refusal released; only f_005 quarantined
-              </td>
-              <td>Simulated Blue Guard timeout injected under CPU stress. T1 guarantees fail-closed safety.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Evidence & Cryptographic Verification -->
-    <section id="evidence">
-      <div class="section-head">
-        <div class="kicker">03 / Verifiable Cryptographic Evidence</div>
-        <h2>Reviewers do not need to trust the runner.</h2>
-        <p>Every finding emitted during benchmark execution is committed into an append-only hash chain and tied to an Ed25519-signed witness checkpoint.</p>
-      </div>
-
-      <div class="evidence-grid">
-        <div class="evidence-list">
-          <div class="evidence-row">
-            <div class="check">✓</div>
-            <div>
-              <strong>Ed25519 Signed Checkpoints</strong>
-              <span>Checkpoints commit to Merkle roots, run IDs, and tree sizes with cryptographic signatures.</span>
-            </div>
-          </div>
-          <div class="evidence-row">
-            <div class="check">✓</div>
-            <div>
-              <strong>SHA-256 Append-Only Event Chain</strong>
-              <span>Events are strictly hash-linked; any retrofitted or modified event invalidates downstream hashes.</span>
-            </div>
-          </div>
-          <div class="evidence-row">
-            <div class="check">✓</div>
-            <div>
-              <strong>RFC 6962 Merkle Inclusion Proofs</strong>
-              <span>Individual finding receipts provide compact logarithmic proofs to the signed root.</span>
-            </div>
-          </div>
-          <div class="evidence-row">
-            <div class="check">✓</div>
-            <div>
-              <strong>Independent Offline Recomputation</strong>
-              <span>The verifier recomputes all invariants (I1–I9) without communicating with the runner or containers.</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="codebox">
-          <div>
-            <div class="label">Verify Evidence Locally</div>
-            <code>make verify RUN=&lt;run-id&gt;</code>
-            <p>Or verify a specific finding receipt JSON directly:</p>
-            <code style="font-size: 1rem; margin: 10px 0;">python -m cairn.cli verify receipt_f_001.json</code>
-          </div>
-          <p style="margin-top: 18px;">
-            Tamper resistance: mutating even 1 byte in the ciphertext, signature, or Merkle path causes the verifier to reject the receipt immediately with exit code 1.
-          </p>
+        <div class="terminal-actions">
+          <span id="logCountMeta" style="color: var(--muted); font-size: .78rem; margin-right: 6px;">0 lines</span>
+          <button class="btn-icon" onclick="copyTerminalLogs()" title="Copy all captured logs">
+            Copy Logs
+          </button>
+          <button class="btn-icon" onclick="clearTerminalView()" title="Clear terminal">
+            Clear
+          </button>
         </div>
       </div>
-    </section>
 
-    <!-- Limitations Callout -->
-    <section id="limits">
-      <div class="callout">
-        <div class="symbol">!</div>
-        <div>
-          <h3>Scope, Assumptions, and Limitations</h3>
-          <p>
-            The benchmark runs demonstrated here use <strong>SimEngine</strong>, a deterministic simulated model backend designed to produce repeatable timing and cache distributions for security testing, not production LLM inference or real GPU hardware. “NO_SIGNAL_AT_POWER” denotes that no side-channel signal was detected within the specified sample sizes (N=200 for L1, N=29 for L3) and inspected locations; it does not constitute mathematical proof of universal side-channel immunity. Kernel-level vulnerabilities, physical CPU microarchitectural attacks, and referee private-key compromises are outside the stated threat model.
-          </p>
+      <div id="terminalBody" class="terminal-body">
+        <div id="terminalEmpty" class="terminal-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          <p>No workflow run selected. Click <strong>Run Live Demo</strong> or select a recent run from the stream selector.</p>
         </div>
+        <div id="terminalLines" style="display: none;"></div>
       </div>
-    </section>
-
-    <!-- Documentation & Links -->
-    <section id="docs">
-      <div class="section-head">
-        <div class="kicker">04 / Documentation &amp; Artifacts</div>
-        <h2>Inspect the implementation and threat model.</h2>
-        <p>Explore the full design specifications, security audits, and deployment instructions.</p>
-      </div>
-
-      <div class="docs">
-        <a class="doclink" href="https://github.com/Anurag-Singh2004/cairn" target="_blank" rel="noreferrer">
-          <strong>GitHub Repository ↗</strong>
-          <span>Full source code, Docker Compose tiers, test suites, and GitHub Actions workflow.</span>
-        </a>
-        <a class="doclink" href="https://github.com/Anurag-Singh2004/cairn/blob/main/docs/RESULTS.md" target="_blank" rel="noreferrer">
-          <strong>Benchmark Results ↗</strong>
-          <span>Latest recorded comparative metrics, confidence intervals, and receipt signatures.</span>
-        </a>
-        <a class="doclink" href="https://github.com/Anurag-Singh2004/cairn/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noreferrer">
-          <strong>Threat Model ↗</strong>
-          <span>Attacker capabilities, trust boundaries, invariant guarantees, and residual risks.</span>
-        </a>
-      </div>
-    </section>
+    </div>
   </div>
 </main>
 
 <footer>
-  <div class="wrap foot">
+  <div class="wrap foot-wrap">
     <span><strong>CAIRN</strong> · Cryptographic Assurance &amp; Isolation for Red-Team Networks</span>
     <span>Hack in Hills ’26 · Live Verifiable Web Application</span>
   </div>
 </footer>
 
 <script>
-  let activeJobId = null;
-  let pollInterval = null;
-  let jobStartTime = null;
+  let currentStreamId = null;
+  let currentRunId = null;
+  let logCursor = 0;
+  let logPollTimer = null;
+  let statusPollTimer = null;
+  let workflowsList = [];
+  let isTrackingDispatched = false;
+  let trackedJobId = null;
+  let seenSequences = new Set();
+  let capturedLogTexts = [];
 
-  async function checkSystemStatus() {
+  // --- Initialize ---
+  window.addEventListener('DOMContentLoaded', () => {
+    checkStatus();
+    loadWorkflows();
+    statusPollTimer = setInterval(checkStatus, 10000);
+  });
+
+  // --- System Status Check ---
+  async function checkStatus() {
     try {
       const res = await fetch('/api/status');
-      if (!res.ok) throw new Error('Status HTTP ' + res.status);
+      if (!res.ok) return;
       const data = await res.json();
 
-      const pill = document.getElementById('systemStatusPill');
-      const dot = document.getElementById('systemStatusDot');
-      const text = document.getElementById('systemStatusText');
       const btn = document.getElementById('runDemoBtn');
+      const dot = document.getElementById('headerDot');
+      const text = document.getElementById('headerStatusText');
+      const badge = document.getElementById('headerStatus');
 
       if (!data.github_configured) {
-        pill.className = 'status-pill';
+        badge.className = 'status-badge';
         dot.className = 'dot amber';
-        text.textContent = 'Reference Mode (GITHUB_TOKEN not set)';
+        text.textContent = 'Reference Mode (Token Absent)';
         btn.disabled = true;
-        btn.title = 'Configure GITHUB_TOKEN in Render environment to enable live benchmark dispatch.';
+        btn.title = 'GITHUB_TOKEN is not set on Render.';
         return;
       }
 
       if (data.active_job) {
-        pill.className = 'status-pill busy';
+        badge.className = 'status-badge running';
         dot.className = 'dot pulsing';
         text.textContent = 'Benchmark Active: ' + (data.active_job.status || 'running');
         btn.disabled = true;
-        // Automatically track active job if we don't have one
-        if (!activeJobId && data.active_job.name && data.active_job.name.startsWith('cairn-demo-')) {
-          const matchedId = data.active_job.name.replace('cairn-demo-', '');
-          trackJob(matchedId, data.active_job.html_url);
-        }
         return;
       }
 
       if (data.cooldown_remaining_seconds > 0) {
-        pill.className = 'status-pill cooldown';
+        badge.className = 'status-badge cooldown';
         dot.className = 'dot amber';
-        text.textContent = 'Global Cooldown: ' + data.cooldown_remaining_seconds + 's';
+        text.textContent = 'Cooldown: ' + data.cooldown_remaining_seconds + 's';
         btn.disabled = true;
         return;
       }
 
-      // Ready
-      pill.className = 'status-pill ready';
+      badge.className = 'status-badge ready';
       dot.className = 'dot';
       text.textContent = 'GitHub Runner Ready';
       btn.disabled = false;
-      btn.title = 'Click to dispatch a live benchmark on GitHub Actions.';
+      btn.title = 'Dispatch real benchmark execution on GitHub Actions';
     } catch (err) {
-      console.warn('System status check failed:', err);
-      const text = document.getElementById('systemStatusText');
-      if (text) text.textContent = 'Service Connected';
+      console.warn('Status check error:', err);
     }
   }
 
-  async function loadLatestResults() {
+  // --- Workflows Listing & Selection ---
+  async function loadWorkflows(autoSelectStreamId = null) {
     try {
-      const res = await fetch('/api/latest');
+      const res = await fetch('/api/workflows');
       if (!res.ok) return;
       const data = await res.json();
+      workflowsList = data.workflows || [];
 
-      const badge = document.getElementById('resultsSourceBadge');
-      const meta = document.getElementById('resultsMeta');
+      const select = document.getElementById('workflowSelect');
+      select.innerHTML = '';
 
-      if (data.is_historical) {
-        badge.className = 'badge historical';
-        badge.textContent = 'Historical Reference Run';
-      } else {
-        badge.className = 'badge live';
-        badge.textContent = 'Live Run: ' + (data.job_id || 'Completed');
+      if (workflowsList.length === 0) {
+        select.innerHTML = '<option value="">No recorded workflows found</option>';
+        return;
       }
 
-      if (data.timestamp) {
-        meta.textContent = 'Recorded: ' + data.timestamp + ' · Engine: ' + (data.engine || 'SimEngine');
-      }
+      let selectedFound = false;
+      workflowsList.forEach(wf => {
+        const opt = document.createElement('option');
+        opt.value = wf.stream_id;
+        const icon = wf.status === 'in_progress' ? '● ' : (wf.conclusion === 'success' ? '✓ ' : (wf.conclusion === 'failure' ? '✗ ' : '○ '));
+        const branchInfo = wf.branch ? ` (${wf.branch})` : '';
+        const runIdShort = wf.run_id ? ` #${wf.run_id}` : '';
+        opt.textContent = `${icon}${wf.name}${runIdShort}${branchInfo} [${wf.status || 'unknown'}]`;
 
-      // Update probe metrics if available
-      if (data.probes) {
-        if (data.probes.l1) {
-          document.getElementById('l1-t0').innerHTML = data.probes.l1.t0_status + '<br><span class="metric">' + data.probes.l1.t0_metric + '</span>';
-          document.getElementById('l1-t1').innerHTML = data.probes.l1.t1_status + '<br><span class="metric">' + data.probes.l1.t1_metric + '</span>';
+        if (autoSelectStreamId && wf.stream_id === autoSelectStreamId) {
+          opt.selected = true;
+          selectedFound = true;
+        } else if (!autoSelectStreamId && !selectedFound && (wf.has_logs || wf.status === 'in_progress')) {
+          opt.selected = true;
+          selectedFound = true;
         }
-        if (data.probes.l3) {
-          document.getElementById('l3-t0').innerHTML = data.probes.l3.t0_status + '<br><span class="metric">' + data.probes.l3.t0_metric + '</span>';
-          document.getElementById('l3-t1').innerHTML = data.probes.l3.t1_status + '<br><span class="metric">' + data.probes.l3.t1_metric + '</span>';
-        }
-        if (data.probes.l4) {
-          document.getElementById('l4-t0').textContent = data.probes.l4.t0_metric;
-          document.getElementById('l4-t1').textContent = data.probes.l4.t1_metric;
-        }
-        if (data.probes.c3) {
-          document.getElementById('c3-t0').textContent = data.probes.c3.t0_metric;
-          document.getElementById('c3-t1').textContent = data.probes.c3.t1_metric;
-        }
-      }
+        select.appendChild(opt);
+      });
 
-      if (data.job_id) {
-        const dlBtn = document.getElementById('downloadArtifactsBtn');
-        dlBtn.style.display = 'inline-flex';
-        dlBtn.href = '/api/jobs/' + data.job_id + '/artifacts.zip';
-        dlBtn.textContent = 'Download Run Artifacts (.zip)';
-
-        const repBtn = document.getElementById('viewReportBtn');
-        repBtn.style.display = 'inline-flex';
-        repBtn.href = '/api/jobs/' + data.job_id + '/report.html';
+      if (!currentStreamId && select.value) {
+        switchStream(select.value);
+      } else if (autoSelectStreamId && selectedFound) {
+        switchStream(autoSelectStreamId);
       }
     } catch (err) {
-      console.warn('Failed to load latest results:', err);
+      console.warn('Failed to load workflows:', err);
     }
   }
 
-  async function startLiveDemo() {
+  function onSelectWorkflow() {
+    const select = document.getElementById('workflowSelect');
+    if (select.value) {
+      switchStream(select.value);
+    }
+  }
+
+  // --- Stream Switching & Log Polling ---
+  function switchStream(streamId) {
+    if (logPollTimer) {
+      clearInterval(logPollTimer);
+      logPollTimer = null;
+    }
+
+    currentStreamId = streamId;
+    logCursor = 0;
+    seenSequences.clear();
+    capturedLogTexts = [];
+
+    // Clear UI
+    document.getElementById('terminalLines').innerHTML = '';
+    document.getElementById('terminalLines').style.display = 'block';
+    document.getElementById('terminalEmpty').style.display = 'none';
+    document.getElementById('logCountMeta').textContent = '0 lines';
+
+    // Update metadata from workflow list
+    const wf = workflowsList.find(w => w.stream_id === streamId);
+    const titleText = document.getElementById('terminalTitleText');
+    const statusPill = document.getElementById('terminalStatusPill');
+    const ghLink = document.getElementById('githubRunLink');
+
+    if (wf) {
+      titleText.textContent = `${wf.name} (${wf.stream_id})`;
+      statusPill.textContent = (wf.status || 'IDLE').toUpperCase();
+      statusPill.className = 'pill ' + (wf.status || '');
+      if (wf.html_url) {
+        ghLink.href = wf.html_url;
+        ghLink.style.display = 'inline-flex';
+      } else {
+        ghLink.style.display = 'none';
+      }
+
+      if (wf.request_id) {
+        setupArtifactButtons(wf.request_id);
+      } else {
+        hideArtifactButtons();
+      }
+    } else {
+      titleText.textContent = `Stream: ${streamId}`;
+      statusPill.textContent = 'STREAMING';
+      statusPill.className = 'pill in_progress';
+      ghLink.style.display = 'none';
+    }
+
+    // Initial fetch and start polling loop
+    pollStreamLogs();
+    logPollTimer = setInterval(pollStreamLogs, 1000);
+  }
+
+  async function pollStreamLogs() {
+    if (!currentStreamId) return;
+
+    try {
+      const res = await fetch(`/api/workflows/${encodeURIComponent(currentStreamId)}/logs?after=${logCursor}&limit=500`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          showEmptyState('Stream not found or expired from memory buffer.');
+        }
+        return;
+      }
+
+      const data = await res.json();
+      const statusPill = document.getElementById('terminalStatusPill');
+      const stepPill = document.getElementById('terminalStepPill');
+
+      if (data.workflow_status) {
+        statusPill.textContent = data.workflow_status.toUpperCase();
+        statusPill.className = 'pill ' + data.workflow_status;
+      }
+
+      if (data.step) {
+        stepPill.textContent = data.step;
+        stepPill.style.display = 'inline-block';
+      }
+
+      const lines = data.lines || [];
+      if (lines.length > 0) {
+        appendLogLines(lines);
+        logCursor = data.next_cursor || logCursor;
+      } else if (capturedLogTexts.length === 0) {
+        if (data.message) {
+          showEmptyState(data.message);
+        } else {
+          showEmptyState('Waiting for the first log lines from runner...');
+        }
+      }
+
+      // If workflow completed and no new lines arrived, slow down polling
+      if (data.workflow_status === 'completed' && lines.length === 0) {
+        if (logPollTimer) {
+          clearInterval(logPollTimer);
+          logPollTimer = null;
+        }
+      }
+    } catch (err) {
+      console.warn('Log poll error:', err);
+    }
+  }
+
+  function appendLogLines(lines) {
+    const termBody = document.getElementById('terminalBody');
+    const linesContainer = document.getElementById('terminalLines');
+    const emptyNotice = document.getElementById('terminalEmpty');
+
+    emptyNotice.style.display = 'none';
+    linesContainer.style.display = 'block';
+
+    // Auto-scroll check: is user near bottom?
+    const isAtBottom = (termBody.scrollHeight - termBody.clientHeight - termBody.scrollTop) <= 45;
+
+    lines.forEach(item => {
+      if (seenSequences.has(item.sequence)) return;
+      seenSequences.add(item.sequence);
+      capturedLogTexts.push(item.text);
+
+      const div = document.createElement('div');
+      div.className = 'log-line';
+
+      const lower = item.text.toLowerCase();
+      if (lower.includes('error') || lower.includes('fail')) {
+        div.classList.add('err');
+      } else if (lower.includes('warning') || lower.includes('notice')) {
+        div.classList.add('warn');
+      } else if (item.text.startsWith('==') || item.text.startsWith('[Step')) {
+        div.classList.add('highlight');
+      }
+
+      const seqSpan = document.createElement('span');
+      seqSpan.className = 'log-seq';
+      seqSpan.textContent = item.sequence;
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      if (item.timestamp) {
+        const t = item.timestamp.split('T')[1] || '';
+        timeSpan.textContent = t.split('.')[0] || '';
+      }
+
+      const textSpan = document.createElement('span');
+      textSpan.className = 'log-text';
+      textSpan.textContent = item.text;
+
+      div.appendChild(seqSpan);
+      div.appendChild(timeSpan);
+      div.appendChild(textSpan);
+
+      linesContainer.appendChild(div);
+    });
+
+    document.getElementById('logCountMeta').textContent = `${capturedLogTexts.length} lines`;
+
+    if (isAtBottom) {
+      termBody.scrollTop = termBody.scrollHeight;
+    }
+  }
+
+  function showEmptyState(msg) {
+    const emptyNotice = document.getElementById('terminalEmpty');
+    const linesContainer = document.getElementById('terminalLines');
+    if (capturedLogTexts.length === 0) {
+      emptyNotice.style.display = 'flex';
+      emptyNotice.querySelector('p').textContent = msg;
+      linesContainer.style.display = 'none';
+    }
+  }
+
+  function clearTerminalView() {
+    document.getElementById('terminalLines').innerHTML = '';
+    capturedLogTexts = [];
+    seenSequences.clear();
+    showEmptyState('Terminal cleared.');
+    document.getElementById('logCountMeta').textContent = '0 lines';
+  }
+
+  function copyTerminalLogs() {
+    if (capturedLogTexts.length === 0) return;
+    const text = capturedLogTexts.join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      showBanner('Logs copied to clipboard!', 'success', 3000);
+    }).catch(err => {
+      console.warn('Clipboard copy failed:', err);
+    });
+  }
+
+  // --- Dispatch CAIRN Demo ---
+  async function dispatchDemo() {
     const btn = document.getElementById('runDemoBtn');
-    const banner = document.getElementById('consoleBanner');
-    banner.style.display = 'none';
+    const btnText = document.getElementById('runDemoBtnText');
 
     btn.disabled = true;
-    btn.innerHTML = '<span class="dot pulsing"></span><span>Dispatching...</span>';
+    btnText.textContent = 'Dispatching...';
+    hideBanner();
 
     try {
       const res = await fetch('/api/jobs', { method: 'POST' });
@@ -694,96 +682,77 @@
         throw new Error(data.detail || 'Dispatch failed with HTTP ' + res.status);
       }
 
-      banner.className = 'banner success';
-      banner.textContent = 'Live benchmark dispatched! Tracking GitHub Actions runner...';
-      trackJob(data.job_id);
+      showBanner('Benchmark dispatched! Waiting for GitHub Actions runner to initialize...', 'success');
+      btnText.textContent = 'Dispatched';
+      trackedJobId = data.job_id;
+      isTrackingDispatched = true;
+
+      // Poll until GitHub run is visible
+      pollForDispatchedRun(data.job_id);
     } catch (err) {
-      banner.className = 'banner error';
-      banner.textContent = 'Could not start demo: ' + err.message;
+      showBanner('Could not start benchmark: ' + err.message, 'error');
       btn.disabled = false;
-      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>Run Live Demo</span>';
+      btnText.textContent = 'Run Live Demo';
     }
   }
 
-  function trackJob(jobId, githubUrl) {
-    activeJobId = jobId;
-    jobStartTime = Date.now();
-
-    const tracker = document.getElementById('jobTracker');
-    const trackerId = document.getElementById('trackerJobId');
-    const stage = document.getElementById('trackerStage');
-    const details = document.getElementById('trackerDetails');
-    const ghLink = document.getElementById('trackerGithubLink');
-
-    tracker.classList.add('active');
-    trackerId.textContent = '(Job: ' + jobId + ')';
-    stage.textContent = 'Queued in GitHub Actions...';
-    details.textContent = 'Waiting for temporary Ubuntu runner allocation.';
-
-    if (githubUrl) {
-      ghLink.href = githubUrl;
-      ghLink.style.display = 'inline-flex';
-    }
-
-    if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(() => pollJobStatus(jobId), 4000);
-  }
-
-  async function pollJobStatus(jobId) {
-    try {
-      const res = await fetch('/api/jobs/' + jobId);
-      if (!res.ok) {
-        if (res.status === 404) {
-          document.getElementById('trackerStage').textContent = 'Initializing GitHub Actions workflow...';
-          return;
+  async function pollForDispatchedRun(jobId) {
+    let attempts = 0;
+    const checkInterval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        if (res.ok) {
+          const job = await res.json();
+          if (job.stream_id && job.github_run_id) {
+            clearInterval(checkInterval);
+            showBanner(`Run #${job.github_run_id} allocated! Streaming live command output...`, 'success', 5000);
+            await loadWorkflows(job.stream_id);
+            setupArtifactButtons(jobId);
+            return;
+          }
         }
-        throw new Error('HTTP ' + res.status);
+      } catch (e) {
+        console.warn('Job tracking error:', e);
       }
 
-      const job = await res.json();
-      const stage = document.getElementById('trackerStage');
-      const details = document.getElementById('trackerDetails');
-      const ghLink = document.getElementById('trackerGithubLink');
-      const dur = document.getElementById('trackerDuration');
-
-      const elapsed = Math.floor((Date.now() - jobStartTime) / 1000);
-      dur.textContent = elapsed + 's elapsed';
-
-      if (job.html_url) {
-        ghLink.href = job.html_url;
-        ghLink.style.display = 'inline-flex';
+      if (attempts >= 25) {
+        clearInterval(checkInterval);
+        showBanner('Run dispatched. Refresh stream selector to view logs once runner starts.', 'warn');
+        loadWorkflows();
       }
+    }, 2000);
+  }
 
-      stage.textContent = job.stage || ('Status: ' + job.status);
-      details.textContent = 'Current status: ' + job.status + (job.conclusion ? ' (' + job.conclusion + ')' : '');
+  function setupArtifactButtons(reqId) {
+    const dlBtn = document.getElementById('downloadArtifactsBtn');
+    dlBtn.href = `/api/jobs/${reqId}/artifacts.zip`;
+    dlBtn.style.display = 'inline-flex';
 
-      if (job.status === 'completed') {
-        clearInterval(pollInterval);
-        pollInterval = null;
+    const repBtn = document.getElementById('viewReportBtn');
+    repBtn.href = `/api/jobs/${reqId}/report.html`;
+    repBtn.style.display = 'inline-flex';
+  }
 
-        const btn = document.getElementById('runDemoBtn');
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>Run Live Demo</span>';
+  function hideArtifactButtons() {
+    document.getElementById('downloadArtifactsBtn').style.display = 'none';
+    document.getElementById('viewReportBtn').style.display = 'none';
+  }
 
-        const banner = document.getElementById('consoleBanner');
-        if (job.conclusion === 'success') {
-          banner.className = 'banner success';
-          banner.textContent = 'Benchmark and verification completed successfully! Updating live results...';
-          await loadLatestResults();
-        } else {
-          banner.className = 'banner error';
-          banner.textContent = 'Benchmark finished with conclusion: ' + job.conclusion + '. Check GitHub Actions logs for details.';
-        }
-      }
-    } catch (err) {
-      console.warn('Poll error:', err);
+  function showBanner(msg, type = 'info', timeout = 0) {
+    const banner = document.getElementById('noticeBanner');
+    banner.textContent = msg;
+    banner.className = 'banner ' + type;
+    if (timeout > 0) {
+      setTimeout(hideBanner, timeout);
     }
   }
 
-  // Initial load
-  checkSystemStatus();
-  loadLatestResults();
-  setInterval(checkSystemStatus, 15000);
+  function hideBanner() {
+    const banner = document.getElementById('noticeBanner');
+    banner.style.display = 'none';
+  }
 </script>
+
 </body>
 </html>

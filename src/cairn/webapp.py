@@ -2,16 +2,19 @@
 
 FastAPI application for Render deployment per context.md and hackathon deployment requirements.
 Serves the interactive evaluator frontend and provides authenticated REST integration
-with GitHub Actions on-demand benchmark runner.
+with GitHub Actions on-demand benchmark runner and live log streaming ingestion.
 """
 
 from __future__ import annotations
 
+import datetime
 import io
 import json
 import logging
 import os
 import re
+import secrets
+import threading
 import time
 import zipfile
 from collections import defaultdict
@@ -50,12 +53,20 @@ COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_SECONDS", "600"))
 CACHE_DIR = Path(os.environ.get("CAIRN_CACHE_DIR", "data/artifact_cache"))
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Log streaming configuration
+CAIRN_LOG_INGEST_TOKEN = os.environ.get("CAIRN_LOG_INGEST_TOKEN", "").strip()
+MAX_RETAINED_STREAMS = int(os.environ.get("CAIRN_MAX_RETAINED_STREAMS", "30"))
+MAX_LINES_PER_STREAM = int(os.environ.get("CAIRN_MAX_LINES_PER_STREAM", "5000"))
+MAX_BYTES_PER_STREAM = int(os.environ.get("CAIRN_MAX_BYTES_PER_STREAM", str(2 * 1024 * 1024)))
+STREAM_EXPIRY_SECONDS = int(os.environ.get("CAIRN_STREAM_EXPIRY_SECONDS", "7200"))
+
 # In-memory rate limiting and dispatched jobs tracking
 CLIENT_REQUEST_HISTORY: dict[str, list[float]] = defaultdict(list)
 DISPATCHED_JOBS: dict[str, dict[str, Any]] = {}
 LATEST_RUN_CACHE: dict[str, Any] = {}
 
 VALID_JOB_ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+VALID_STREAM_ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 
 
 def is_safe_artifact_file(file_path: Path | str) -> bool:
@@ -81,6 +92,181 @@ class JobCreateResponse(BaseModel):
     message: str
 
 
+class LogLineInput(BaseModel):
+    timestamp: str | None = None
+    step: str | None = None
+    text: str
+
+
+class LogBatchInput(BaseModel):
+    stream_id: str
+    run_id: str | int
+    attempt: str | int = "1"
+    workflow: str = "workflow"
+    job: str = "job"
+    step: str = "step"
+    request_id: str | None = None
+    lines: list[LogLineInput]
+
+
+class LogStream:
+    """Represents an active or completed in-memory log stream for a specific run attempt."""
+
+    def __init__(
+        self,
+        stream_id: str,
+        run_id: str,
+        attempt: str,
+        workflow: str,
+        job: str,
+        step: str,
+        request_id: str | None,
+    ) -> None:
+        self.stream_id = stream_id
+        self.run_id = run_id
+        self.attempt = attempt
+        self.workflow = workflow
+        self.job = job
+        self.step = step
+        self.request_id = request_id
+        self.created_at = time.time()
+        self.updated_at = self.created_at
+        self.lines: list[dict[str, Any]] = []
+        self.next_sequence: int = 1
+        self.total_bytes: int = 0
+
+    def append_line(self, timestamp: str, step: str, text: str) -> None:
+        # Enforce maximum individual line size
+        if len(text) > 4096:
+            text = text[:4096] + " ... [TRUNCATED]"
+
+        line_bytes = len(text.encode("utf-8", errors="replace"))
+        entry = {
+            "sequence": self.next_sequence,
+            "timestamp": timestamp,
+            "step": step,
+            "text": text,
+        }
+        self.lines.append(entry)
+        self.next_sequence += 1
+        self.total_bytes += line_bytes
+        self.updated_at = time.time()
+        if step:
+            self.step = step
+
+        # Prune if exceeded line or byte limits
+        while len(self.lines) > MAX_LINES_PER_STREAM:
+            removed = self.lines.pop(0)
+            self.total_bytes -= len(removed["text"].encode("utf-8", errors="replace"))
+
+        while self.lines and self.total_bytes > MAX_BYTES_PER_STREAM:
+            removed = self.lines.pop(0)
+            self.total_bytes -= len(removed["text"].encode("utf-8", errors="replace"))
+
+
+class LogBufferManager:
+    """Thread-safe manager for in-memory log streams with retention and pruning."""
+
+    def __init__(self) -> None:
+        self._streams: dict[str, LogStream] = {}
+        self._lock = threading.Lock()
+
+    def add_batch(
+        self,
+        stream_id: str,
+        run_id: str,
+        attempt: str,
+        workflow: str,
+        job: str,
+        step: str,
+        request_id: str | None,
+        lines: list[dict[str, Any]],
+    ) -> int:
+        with self._lock:
+            self._prune_expired()
+
+            if stream_id not in self._streams:
+                if len(self._streams) >= MAX_RETAINED_STREAMS:
+                    oldest_key = min(self._streams, key=lambda k: self._streams[k].updated_at)
+                    del self._streams[oldest_key]
+
+                self._streams[stream_id] = LogStream(
+                    stream_id=stream_id,
+                    run_id=run_id,
+                    attempt=attempt,
+                    workflow=workflow,
+                    job=job,
+                    step=step,
+                    request_id=request_id,
+                )
+
+            stream = self._streams[stream_id]
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+            for item in lines:
+                t_stamp = item.get("timestamp") or now_iso
+                st = item.get("step") or step
+                txt = item.get("text", "")
+                stream.append_line(t_stamp, st, txt)
+
+            return len(lines)
+
+    def get_lines(
+        self, stream_id: str, after_cursor: int = 0, limit: int = 500
+    ) -> tuple[list[dict[str, Any]], int, bool, LogStream | None]:
+        with self._lock:
+            stream = self._streams.get(stream_id)
+            if not stream:
+                return [], after_cursor, False, None
+
+            filtered = [line for line in stream.lines if line["sequence"] > after_cursor]
+            has_more = len(filtered) > limit
+            chunk = filtered[:limit]
+            next_cursor = chunk[-1]["sequence"] if chunk else after_cursor
+            return chunk, next_cursor, has_more, stream
+
+    def get_stream(self, stream_id: str) -> LogStream | None:
+        with self._lock:
+            return self._streams.get(stream_id)
+
+    def list_streams(self) -> list[dict[str, Any]]:
+        with self._lock:
+            self._prune_expired()
+            res = []
+            for st in self._streams.values():
+                res.append(
+                    {
+                        "stream_id": st.stream_id,
+                        "run_id": st.run_id,
+                        "attempt": st.attempt,
+                        "workflow": st.workflow,
+                        "job": st.job,
+                        "step": st.step,
+                        "request_id": st.request_id,
+                        "created_at": st.created_at,
+                        "updated_at": st.updated_at,
+                        "line_count": len(st.lines),
+                        "total_bytes": st.total_bytes,
+                    }
+                )
+            res.sort(key=lambda s: s["updated_at"], reverse=True)
+            return res
+
+    def clear(self) -> None:
+        with self._lock:
+            self._streams.clear()
+
+    def _prune_expired(self) -> None:
+        now = time.time()
+        expired = [
+            k for k, v in self._streams.items() if now - v.updated_at > STREAM_EXPIRY_SECONDS
+        ]
+        for k in expired:
+            del self._streams[k]
+
+
+LOG_BUFFER = LogBufferManager()
+
+
 def is_github_configured() -> bool:
     """Check if a valid, non-placeholder GitHub token is configured."""
     return bool(
@@ -95,7 +281,6 @@ def check_client_rate_limit(client_ip: str, limit: int = 5, window_seconds: int 
     """Sliding-window per-client rate limiter."""
     now = time.time()
     history = CLIENT_REQUEST_HISTORY[client_ip]
-    # Prune timestamps older than window
     CLIENT_REQUEST_HISTORY[client_ip] = [ts for ts in history if now - ts < window_seconds]
     if len(CLIENT_REQUEST_HISTORY[client_ip]) >= limit:
         return False
@@ -122,7 +307,6 @@ def parse_results_markdown(file_path: Path) -> dict[str, Any]:
     mtime = file_path.stat().st_mtime
     iso_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mtime))
 
-    # Basic extraction
     runs: dict[str, dict[str, Any]] = {}
     for line in text.splitlines():
         is_target_line = (
@@ -231,7 +415,6 @@ def parse_job_artifacts(artifact_dir: Path, job_id: str) -> dict[str, Any]:
     parsed["github_run_id"] = summary.get("github_run_id")
     parsed["github_sha"] = summary.get("github_sha")
 
-    # If t1 results.json exists, enrich probe outcomes
     t1_name = summary.get("tiers", {}).get("t1")
     if t1_name:
         t1_path = artifact_dir / t1_name / "results.json"
@@ -285,10 +468,7 @@ async def get_github_workflow_runs(status_filter: str | None = None) -> list[dic
 
 
 async def check_active_run_and_cooldown() -> tuple[dict[str, Any] | None, int]:
-    """Check if there is an active running/queued job or active cooldown.
-
-    Returns: (active_job_dict_or_none, cooldown_seconds_remaining)
-    """
+    """Check if there is an active running/queued job or active cooldown."""
     if not is_github_configured():
         return None, 0
 
@@ -309,16 +489,12 @@ async def check_active_run_and_cooldown() -> tuple[dict[str, Any] | None, int]:
             }
             break
 
-    # Check cooldown from newest completed run
     completed_runs = [r for r in runs if r.get("status") == "completed"]
     if completed_runs:
         last_run = completed_runs[0]
-        # parse updated_at / created_at (ISO 8601: e.g. 2026-10-26T17:15:00Z)
         updated_str = last_run.get("updated_at") or last_run.get("created_at")
         if updated_str:
             try:
-                import datetime
-
                 dt = datetime.datetime.fromisoformat(updated_str.replace("Z", "+00:00"))
                 elapsed = now - dt.timestamp()
                 if elapsed < COOLDOWN_SECONDS:
@@ -354,13 +530,12 @@ async def get_status() -> dict[str, Any]:
         active_job, cooldown_remaining = await check_active_run_and_cooldown()
 
     can_dispatch = configured and (active_job is None) and (cooldown_remaining == 0)
-
-    # Check if we have any cached or historical results
     latest_avail = (BASE_DIR / "docs" / "RESULTS.md").is_file() or bool(LATEST_RUN_CACHE)
 
     return {
         "service": "cairn-app",
         "github_configured": configured,
+        "log_streaming_configured": bool(CAIRN_LOG_INGEST_TOKEN),
         "repository": GITHUB_REPOSITORY,
         "workflow_file": GITHUB_WORKFLOW_FILE,
         "ref": GITHUB_REF,
@@ -373,14 +548,9 @@ async def get_status() -> dict[str, Any]:
 
 @app.get("/api/latest")
 async def get_latest_results() -> dict[str, Any]:
-    """Retrieve the most recent verified benchmark results.
-
-    Returns live run results if completed, otherwise falls back to historical reference results.
-    """
+    """Retrieve the most recent verified benchmark results."""
     if LATEST_RUN_CACHE:
         return LATEST_RUN_CACHE
-
-    # Fallback to docs/RESULTS.md
     return parse_results_markdown(BASE_DIR / "docs" / "RESULTS.md")
 
 
@@ -389,14 +559,12 @@ async def create_benchmark_job(request: Request) -> JobCreateResponse:
     """Dispatch a new live CAIRN benchmark execution via GitHub Actions."""
     client_ip = request.client.host if request.client else "unknown"
 
-    # 1. Rate limiting
     if not check_client_rate_limit(client_ip, limit=5, window_seconds=60):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded. Please wait before submitting another request.",
         )
 
-    # 2. Check token configuration
     if not is_github_configured():
         raise HTTPException(
             status_code=503,
@@ -406,7 +574,6 @@ async def create_benchmark_job(request: Request) -> JobCreateResponse:
             ),
         )
 
-    # 3. Check for active run and cooldown
     active_job, cooldown_remaining = await check_active_run_and_cooldown()
     if active_job:
         raise HTTPException(
@@ -422,12 +589,10 @@ async def create_benchmark_job(request: Request) -> JobCreateResponse:
             detail=f"Global benchmark cooldown active. Please wait {cooldown_remaining}s.",
         )
 
-    # 4. Generate correlation ID
     import uuid
 
     req_id = uuid.uuid4().hex[:10]
 
-    # 5. Dispatch workflow
     dispatch_payload = {
         "ref": GITHUB_REF,
         "inputs": {
@@ -453,7 +618,6 @@ async def create_benchmark_job(request: Request) -> JobCreateResponse:
             detail_msg = f"GitHub rejected dispatch request: {resp.text}"
         raise HTTPException(status_code=502, detail=detail_msg)
 
-    # Record job in local memory
     DISPATCHED_JOBS[req_id] = {
         "job_id": req_id,
         "request_id": req_id,
@@ -477,12 +641,10 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid job ID format.")
 
     if not is_github_configured():
-        # If in-memory mock or test job exists
         if job_id in DISPATCHED_JOBS:
             return DISPATCHED_JOBS[job_id]
         raise HTTPException(status_code=404, detail="Job not found and GitHub token not set.")
 
-    # Query recent workflow runs from GitHub to correlate with job_id
     runs = await get_github_workflow_runs()
     target_run = None
     expected_name = f"cairn-demo-{job_id}"
@@ -492,7 +654,6 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
             target_run = r
             break
 
-    # If run object not yet created by GitHub scheduler
     if not target_run:
         job_record = DISPATCHED_JOBS.get(job_id)
         if job_record and time.time() - job_record["created_at"] < 45:
@@ -512,15 +673,16 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
         )
 
     run_id = target_run["id"]
+    attempt = str(target_run.get("run_attempt", 1))
     status = target_run.get("status")
     conclusion = target_run.get("conclusion")
     html_url = target_run.get("html_url")
     created_at = target_run.get("created_at")
     updated_at = target_run.get("updated_at")
+    stream_id = f"{run_id}-attempt-{attempt}"
 
     stage_desc = f"Workflow status: {status}"
 
-    # If in progress, fetch job steps for real stage tracking
     if status == "in_progress":
         try:
             jobs_resp = await github_api_request("GET", f"actions/runs/{run_id}/jobs")
@@ -536,11 +698,9 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
         except Exception:
             pass
 
-    # If completed successfully, retrieve and cache artifacts
     if status == "completed":
         if conclusion == "success":
             stage_desc = "Benchmark and offline verification completed successfully"
-            # Ensure artifacts downloaded
             await ensure_job_artifacts_downloaded(job_id, run_id)
         else:
             stage_desc = f"Workflow execution ended with conclusion: {conclusion}"
@@ -548,6 +708,8 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
     return {
         "job_id": job_id,
         "github_run_id": run_id,
+        "run_attempt": attempt,
+        "stream_id": stream_id,
         "status": status,
         "conclusion": conclusion,
         "stage": stage_desc,
@@ -555,6 +717,173 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
         "created_at": created_at,
         "updated_at": updated_at,
     }
+
+
+# --- Log Streaming Endpoints ---
+
+
+@app.post("/api/internal/logs", status_code=200)
+async def ingest_logs(batch: LogBatchInput, request: Request) -> dict[str, Any]:
+    """Ingest a batch of real-time command output lines from GitHub Actions runner."""
+    if not CAIRN_LOG_INGEST_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Log ingestion is not configured on this server. "
+                "Set CAIRN_LOG_INGEST_TOKEN in environment."
+            ),
+        )
+
+    auth_header = request.headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer ") :].strip()
+    elif "X-Cairn-Ingest-Token" in request.headers:
+        token = request.headers["X-Cairn-Ingest-Token"].strip()
+
+    if not token or not secrets.compare_digest(token, CAIRN_LOG_INGEST_TOKEN):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: invalid or missing ingest token.",
+        )
+
+    if not VALID_STREAM_ID_REGEX.match(batch.stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream ID format.")
+
+    if len(batch.lines) > 500:
+        raise HTTPException(status_code=400, detail="Batch exceeds maximum limit of 500 lines.")
+
+    lines_dicts = [
+        {"timestamp": item.timestamp, "step": item.step, "text": item.text} for item in batch.lines
+    ]
+    accepted = LOG_BUFFER.add_batch(
+        stream_id=batch.stream_id,
+        run_id=str(batch.run_id),
+        attempt=str(batch.attempt),
+        workflow=batch.workflow,
+        job=batch.job,
+        step=batch.step,
+        request_id=batch.request_id,
+        lines=lines_dicts,
+    )
+
+    return {"status": "ok", "accepted": accepted, "stream_id": batch.stream_id}
+
+
+@app.get("/api/workflows")
+async def list_workflows() -> dict[str, Any]:
+    """List recent and active workflow runs with their stream identifiers and status."""
+    workflows: list[dict[str, Any]] = []
+
+    if is_github_configured():
+        try:
+            resp = await github_api_request("GET", "actions/runs?per_page=15")
+            if resp.status_code == 200:
+                gh_runs = resp.json().get("workflow_runs", [])
+                for r in gh_runs:
+                    run_id = str(r.get("id"))
+                    attempt = str(r.get("run_attempt", 1))
+                    stream_id = f"{run_id}-attempt-{attempt}"
+                    name = r.get("name", "Workflow")
+                    req_id = None
+                    if name.startswith("cairn-demo-"):
+                        req_id = name.replace("cairn-demo-", "")
+
+                    has_logs = bool(LOG_BUFFER.get_stream(stream_id) is not None)
+                    workflows.append(
+                        {
+                            "name": name,
+                            "workflow_path": r.get("path"),
+                            "run_id": r.get("id"),
+                            "run_attempt": r.get("run_attempt", 1),
+                            "stream_id": stream_id,
+                            "status": r.get("status"),
+                            "conclusion": r.get("conclusion"),
+                            "branch": r.get("head_branch"),
+                            "commit_sha": (r.get("head_sha") or "")[:7],
+                            "event": r.get("event"),
+                            "created_at": r.get("created_at"),
+                            "updated_at": r.get("updated_at"),
+                            "html_url": r.get("html_url"),
+                            "request_id": req_id,
+                            "has_logs": has_logs,
+                        }
+                    )
+        except Exception as exc:
+            logger.warning(f"Error fetching GitHub workflow runs: {exc}")
+
+    # Also include in-memory streams if any are not in the GitHub list
+    seen_streams = {w["stream_id"] for w in workflows}
+    for st in LOG_BUFFER.list_streams():
+        s_id = st["stream_id"]
+        if s_id not in seen_streams:
+            workflows.append(
+                {
+                    "name": st.get("workflow", "Workflow"),
+                    "workflow_path": "",
+                    "run_id": st.get("run_id"),
+                    "run_attempt": st.get("attempt", 1),
+                    "stream_id": s_id,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "branch": "main",
+                    "commit_sha": "",
+                    "event": "workflow_dispatch",
+                    "created_at": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(st["created_at"])
+                    ),
+                    "updated_at": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(st["updated_at"])
+                    ),
+                    "html_url": None,
+                    "request_id": st.get("request_id"),
+                    "has_logs": True,
+                }
+            )
+
+    return {"workflows": workflows}
+
+
+@app.get("/api/workflows/{stream_id}/logs")
+async def get_workflow_logs(stream_id: str, after: int = 0, limit: int = 500) -> dict[str, Any]:
+    """Retrieve incremental live log lines after a cursor sequence number."""
+    if not VALID_STREAM_ID_REGEX.match(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream ID format.")
+
+    limit = max(1, min(limit, 1000))
+    chunk, next_cursor, has_more, stream = LOG_BUFFER.get_lines(
+        stream_id, after_cursor=after, limit=limit
+    )
+
+    if stream is not None:
+        return {
+            "stream_id": stream_id,
+            "run_id": stream.run_id,
+            "attempt": stream.attempt,
+            "workflow": stream.workflow,
+            "step": stream.step,
+            "lines": chunk,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "workflow_status": "in_progress",
+            "message": None,
+        }
+
+    # If stream has no lines in memory yet, check if it exists on GitHub
+    if "-" in stream_id:
+        return {
+            "stream_id": stream_id,
+            "lines": [],
+            "next_cursor": 0,
+            "has_more": False,
+            "workflow_status": "unknown",
+            "message": "No live log output received for this workflow run yet.",
+        }
+
+    raise HTTPException(status_code=404, detail=f"Workflow stream '{stream_id}' not found.")
+
+
+# --- Artifact Handling & Offline Verification ---
 
 
 async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | None:
@@ -567,7 +896,6 @@ async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | No
         return None
 
     try:
-        # Find artifact
         art_resp = await github_api_request("GET", f"actions/runs/{run_id}/artifacts")
         if art_resp.status_code != 200:
             return None
@@ -576,24 +904,21 @@ async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | No
         expected_art_name = f"cairn-artifacts-{job_id}"
         art_obj = next((a for a in artifacts if a.get("name") == expected_art_name), None)
         if not art_obj and artifacts:
-            art_obj = artifacts[0]  # Fallback to first artifact if uniquely uploaded
+            art_obj = artifacts[0]
 
         if not art_obj:
             return None
 
         art_id = art_obj["id"]
-        # Download artifact zip
         dl_resp = await github_api_request(
             "GET", f"actions/artifacts/{art_id}/zip", follow_redirects=True
         )
         if dl_resp.status_code != 200:
             return None
 
-        # Extract only allowlisted safe files
         target_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(dl_resp.content)) as zf:
             for member in zf.infolist():
-                # Disallow path traversal
                 norm_name = os.path.normpath(member.filename)
                 if norm_name.startswith("..") or os.path.isabs(norm_name):
                     continue
@@ -605,7 +930,6 @@ async def ensure_job_artifacts_downloaded(job_id: str, run_id: int) -> Path | No
 
                 zf.extract(member, target_dir)
 
-        # Update latest run cache
         parsed = parse_job_artifacts(target_dir, job_id)
         LATEST_RUN_CACHE.clear()
         LATEST_RUN_CACHE.update(parsed)
@@ -625,7 +949,6 @@ async def get_job_results(job_id: str) -> dict[str, Any]:
     if target_dir.is_dir():
         return parse_job_artifacts(target_dir, job_id)
 
-    # Check status from GitHub if not cached
     status_info = await get_job_status(job_id)
     if status_info.get("status") != "completed":
         raise HTTPException(status_code=409, detail=f"Job is still {status_info.get('status')}.")
@@ -650,7 +973,6 @@ async def download_job_artifacts_zip(job_id: str) -> StreamingResponse:
 
     target_dir = CACHE_DIR / job_id
     if not target_dir.is_dir():
-        # Attempt download if run is completed
         status_info = await get_job_status(job_id)
         run_id = status_info.get("github_run_id")
         is_done = status_info.get("status") == "completed"
@@ -661,7 +983,6 @@ async def download_job_artifacts_zip(job_id: str) -> StreamingResponse:
     if not target_dir.is_dir():
         raise HTTPException(status_code=404, detail="No artifacts available for download.")
 
-    # Build safe in-memory zip
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path in target_dir.rglob("*"):
@@ -707,7 +1028,6 @@ async def serve_index() -> HTMLResponse:
     return HTMLResponse(index_file.read_text(encoding="utf-8"))
 
 
-# Static asset route if needed
 @app.get("/site/{path:path}")
 async def serve_site_assets(path: str) -> Response:
     """Serve supplementary static assets from site/ if requested."""

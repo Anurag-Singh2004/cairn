@@ -15,5 +15,7 @@ services:
         value: main
       - key: GITHUB_TOKEN
         sync: false
+      - key: CAIRN_LOG_INGEST_TOKEN
+        sync: false
       - key: COOLDOWN_SECONDS
         value: "600"

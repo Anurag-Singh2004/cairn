@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      CAIRN_LOG_INGEST_URL: ${{ vars.CAIRN_LOG_INGEST_URL }}
+      CAIRN_LOG_INGEST_TOKEN: ${{ secrets.CAIRN_LOG_INGEST_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +28,9 @@ jobs:
 
       - name: Lint
         run: |
-          ruff check src/ tests/
-          ruff format --check src/ tests/
+          python scripts/stream_action_logs.py --step "Lint Check" -- ruff check src/ tests/
+          python scripts/stream_action_logs.py --step "Format Check" -- ruff format --check src/ tests/
 
       - name: Unit and integration tests
-        run: pytest tests/unit/ tests/integration/ -v
+        run: |
+          python scripts/stream_action_logs.py --step "Unit & Integration Tests" -- pytest tests/unit/ tests/integration/ -v
