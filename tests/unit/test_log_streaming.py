@@ -21,10 +21,12 @@ from cairn.webapp import LOG_BUFFER, app
 
 @pytest.fixture(autouse=True)
 def clean_log_buffer():
-    """Ensure in-memory log buffer is cleared before and after each test."""
+    """Ensure in-memory log buffer and status cache are cleared before and after each test."""
     LOG_BUFFER.clear()
+    webapp.GITHUB_STATUS_CACHE.clear()
     yield
     LOG_BUFFER.clear()
+    webapp.GITHUB_STATUS_CACHE.clear()
 
 
 # ============================================================================
@@ -446,3 +448,303 @@ def test_incremental_streaming_delivery_during_command_execution():
     assert all_lines[0]["text"] == "Line 1: starting benchmark"
     assert all_lines[1]["text"] == "Line 2: running probe L1"
     assert all_lines[2]["text"] == "Line 3: finished"
+
+
+# ============================================================================
+# Status Synchronization & Progress Panel Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_workflow_status_running_when_github_in_progress():
+    """Verify in-progress GitHub workflow maps to RUNNING with active step."""
+    mock_run = {
+        "id": 901,
+        "run_attempt": 1,
+        "name": "CAIRN Demo",
+        "status": "in_progress",
+        "conclusion": None,
+        "html_url": "https://github.com/Anurag-Singh2004/cairn/actions/runs/901",
+        "updated_at": "2026-10-28T02:00:00Z",
+    }
+    mock_jobs = {
+        "jobs": [
+            {
+                "id": 501,
+                "name": "Execute CAIRN Demo Benchmark",
+                "status": "in_progress",
+                "conclusion": None,
+                "steps": [
+                    {"name": "Set up Python", "status": "completed", "conclusion": "success"},
+                    {
+                        "name": "Execute end-to-end benchmark demo",
+                        "status": "in_progress",
+                        "conclusion": None,
+                    },
+                    {"name": "Package artifacts", "status": "queued", "conclusion": None},
+                ],
+            }
+        ]
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if endpoint == "actions/runs/901":
+            return httpx.Response(200, json=mock_run)
+        if endpoint == "actions/runs/901/jobs":
+            return httpx.Response(200, json=mock_jobs)
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/workflows/901-attempt-1/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["display_status"] == "IN_PROGRESS"
+            assert data["current_job"] == "Execute CAIRN Demo Benchmark"
+            assert data["current_step"] == "Execute end-to-end benchmark demo"
+            assert data["steps_completed"] == 1
+            assert data["steps_total"] == 3
+            assert data["progress_pct"] == 33
+            assert data["github_available"] is True
+            assert data["is_stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_workflow_status_success_when_github_completed_success():
+    """Verify completed GitHub workflow maps to SUCCESS with final step."""
+    mock_run = {
+        "id": 902,
+        "run_attempt": 1,
+        "name": "CAIRN Demo",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/Anurag-Singh2004/cairn/actions/runs/902",
+        "updated_at": "2026-10-28T02:05:00Z",
+    }
+    mock_jobs = {
+        "jobs": [
+            {
+                "id": 502,
+                "name": "Execute CAIRN Demo Benchmark",
+                "status": "completed",
+                "conclusion": "success",
+                "steps": [
+                    {"name": "Set up Python", "status": "completed", "conclusion": "success"},
+                    {
+                        "name": "Execute end-to-end benchmark demo",
+                        "status": "completed",
+                        "conclusion": "success",
+                    },
+                    {"name": "Package artifacts", "status": "completed", "conclusion": "success"},
+                ],
+            }
+        ]
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if endpoint == "actions/runs/902":
+            return httpx.Response(200, json=mock_run)
+        if endpoint == "actions/runs/902/jobs":
+            return httpx.Response(200, json=mock_jobs)
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/workflows/902-attempt-1/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["display_status"] == "SUCCESS"
+            assert data["current_step"] == "Package artifacts"
+            assert data["steps_completed"] == 3
+            assert data["steps_total"] == 3
+            assert data["progress_pct"] == 100
+
+
+@pytest.mark.asyncio
+async def test_workflow_status_failed_when_github_failed():
+    """Verify failed GitHub workflow maps to FAILED."""
+    mock_run = {
+        "id": 903,
+        "run_attempt": 1,
+        "name": "CI Tests",
+        "status": "completed",
+        "conclusion": "failure",
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if endpoint == "actions/runs/903":
+            return httpx.Response(200, json=mock_run)
+        if endpoint == "actions/runs/903/jobs":
+            return httpx.Response(200, json={"jobs": []})
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/workflows/903-attempt-1/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["display_status"] == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_workflow_status_cancelled_when_github_cancelled():
+    """Verify cancelled GitHub workflow maps to CANCELLED."""
+    mock_run = {
+        "id": 904,
+        "run_attempt": 1,
+        "name": "CI Tests",
+        "status": "completed",
+        "conclusion": "cancelled",
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if endpoint == "actions/runs/904":
+            return httpx.Response(200, json=mock_run)
+        if endpoint == "actions/runs/904/jobs":
+            return httpx.Response(200, json={"jobs": []})
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/workflows/904-attempt-1/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["display_status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
+async def test_presence_of_buffered_logs_does_not_force_in_progress():
+    """Verify having buffered logs in memory does not force workflow status to in_progress."""
+    # Add buffered logs for stream 905-attempt-1
+    test_token = "valid_tok"
+    payload = {
+        "stream_id": "905-attempt-1",
+        "run_id": "905",
+        "attempt": "1",
+        "workflow": "CAIRN Demo",
+        "job": "demo",
+        "step": "Package Artifacts",
+        "lines": [{"text": "artifact line 1"}],
+    }
+
+    mock_run = {
+        "id": 905,
+        "run_attempt": 1,
+        "name": "CAIRN Demo",
+        "status": "completed",
+        "conclusion": "success",
+    }
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        if endpoint == "actions/runs/905":
+            return httpx.Response(200, json=mock_run)
+        if endpoint == "actions/runs/905/jobs":
+            return httpx.Response(200, json={"jobs": []})
+        return httpx.Response(404)
+
+    with (
+        patch.object(webapp, "CAIRN_LOG_INGEST_TOKEN", test_token),
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # 1. Post batch into buffer
+            post_resp = await client.post(
+                "/api/internal/logs",
+                json=payload,
+                headers={"Authorization": f"Bearer {test_token}"},
+            )
+            assert post_resp.status_code == 200
+
+            # 2. Query logs
+            logs_resp = await client.get("/api/workflows/905-attempt-1/logs?after=0")
+            assert logs_resp.status_code == 200
+            logs_data = logs_resp.json()
+            # Must reflect actual GitHub completion, NOT hardcoded in_progress!
+            assert logs_data["workflow_status"] == "success"
+
+            # 3. Query status endpoint
+            status_resp = await client.get("/api/workflows/905-attempt-1/status")
+            assert status_resp.status_code == 200
+            assert status_resp.json()["display_status"] == "SUCCESS"
+
+
+@pytest.mark.asyncio
+async def test_unknown_status_when_github_unavailable():
+    """Verify unknown status reported honestly when GitHub API is unconfigured."""
+    with patch.object(webapp, "is_github_configured", return_value=False):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/workflows/999-attempt-1/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["display_status"] == "UNKNOWN"
+            assert data["github_available"] is False
+
+
+@pytest.mark.asyncio
+async def test_stale_cache_returned_when_github_request_errors():
+    """Verify cached status is returned with is_stale=True if GitHub API fails subsequently."""
+    mock_run = {
+        "id": 906,
+        "run_attempt": 1,
+        "name": "CAIRN Demo",
+        "status": "in_progress",
+        "conclusion": None,
+    }
+
+    call_count = 0
+
+    async def fake_gh_request(method, endpoint, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            if endpoint == "actions/runs/906":
+                return httpx.Response(200, json=mock_run)
+            return httpx.Response(200, json={"jobs": []})
+        raise httpx.RequestError("GitHub API timeout")
+
+    with (
+        patch.object(webapp, "is_github_configured", return_value=True),
+        patch.object(webapp, "github_api_request", side_effect=fake_gh_request),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # First call succeeds and caches
+            r1 = await client.get("/api/workflows/906-attempt-1/status")
+            assert r1.status_code == 200
+            assert r1.json()["is_stale"] is False
+
+            # Force cache expiration
+            webapp.GITHUB_STATUS_CACHE._cache["906:1"]["expires_at"] = time.time() - 1
+
+            # Second call encounters network error, must return stale cached entry
+            r2 = await client.get("/api/workflows/906-attempt-1/status")
+            assert r2.status_code == 200
+            d2 = r2.json()
+            assert d2["is_stale"] is True
+            assert d2["display_status"] == "IN_PROGRESS"

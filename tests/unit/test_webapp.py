@@ -58,9 +58,10 @@ async def test_serve_index_html():
         resp = await client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "CAIRN" in resp.text
         assert "Live Benchmark Execution Console" in resp.text
-        assert "Run Live Demo" in resp.text
+        assert "WORKFLOW STATUS" in resp.text
+        assert "Run CAIRN security benchmarks." in resp.text
+        assert "Run" in resp.text
 
 
 @pytest.mark.asyncio

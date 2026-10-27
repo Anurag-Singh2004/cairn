@@ -505,6 +505,236 @@ async def check_active_run_and_cooldown() -> tuple[dict[str, Any] | None, int]:
     return active_job, cooldown_remaining
 
 
+# --- GitHub Actions Workflow & Step Status Synchronization ---
+
+
+def compute_display_status(status: str | None, conclusion: str | None) -> str:
+    """Map GitHub Actions status and conclusion to standardized display status.
+
+    Supported values:
+    - QUEUED
+    - IN_PROGRESS
+    - SUCCESS
+    - FAILED
+    - CANCELLED
+    - TIMED_OUT
+    - UNKNOWN
+    """
+    s = (status or "").lower()
+    c = (conclusion or "").lower()
+
+    if s in ("queued", "requested", "waiting", "pending"):
+        return "QUEUED"
+    if s == "in_progress":
+        return "IN_PROGRESS"
+    if s == "completed":
+        if c == "success":
+            return "SUCCESS"
+        if c == "failure":
+            return "FAILED"
+        if c in ("cancelled", "canceled"):
+            return "CANCELLED"
+        if c == "timed_out":
+            return "TIMED_OUT"
+        if c:
+            return c.upper()
+        return "COMPLETED"
+    return "UNKNOWN"
+
+
+def extract_job_step_progress(jobs_data: list[dict[str, Any]]) -> dict[str, Any]:
+    """Extract current job, step counts, and progress percentage from GitHub jobs list."""
+    if not jobs_data:
+        return {
+            "current_job": None,
+            "current_step": None,
+            "steps_completed": 0,
+            "steps_total": 0,
+            "progress_pct": 0,
+        }
+
+    active_job = None
+    for j in jobs_data:
+        if j.get("status") == "in_progress":
+            active_job = j
+            break
+    if not active_job:
+        for j in jobs_data:
+            if j.get("conclusion") == "failure":
+                active_job = j
+                break
+    if not active_job:
+        active_job = jobs_data[-1]
+
+    job_name = active_job.get("name") or "Workflow Job"
+    steps = active_job.get("steps") or []
+    total_steps = len(steps)
+
+    completed_steps = 0
+    in_progress_step_name = None
+    last_completed_step_name = None
+
+    for s in steps:
+        s_status = (s.get("status") or "").lower()
+        if s_status == "completed":
+            completed_steps += 1
+            last_completed_step_name = s.get("name")
+        elif s_status == "in_progress" and in_progress_step_name is None:
+            in_progress_step_name = s.get("name")
+
+    if in_progress_step_name:
+        current_step_name = in_progress_step_name
+    elif completed_steps == total_steps and total_steps > 0:
+        current_step_name = last_completed_step_name or "All steps completed"
+    elif completed_steps > 0:
+        current_step_name = last_completed_step_name
+    else:
+        current_step_name = "Queued" if total_steps > 0 else None
+
+    progress_pct = round((completed_steps / total_steps) * 100) if total_steps > 0 else 0
+
+    return {
+        "current_job": job_name,
+        "current_step": current_step_name,
+        "steps_completed": completed_steps,
+        "steps_total": total_steps,
+        "progress_pct": progress_pct,
+    }
+
+
+class GitHubStatusCache:
+    """Thread-safe TTL cache for GitHub Actions workflow run and job status."""
+
+    def __init__(self) -> None:
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            entry = self._cache.get(key)
+            if not entry:
+                return None
+            if time.time() > entry["expires_at"]:
+                return None
+            return dict(entry["data"])
+
+    def get_stale(self, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            entry = self._cache.get(key)
+            return dict(entry["data"]) if entry else None
+
+    def set(self, key: str, data: dict[str, Any], ttl_seconds: float) -> None:
+        with self._lock:
+            self._cache[key] = {
+                "data": dict(data),
+                "expires_at": time.time() + ttl_seconds,
+            }
+
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
+
+GITHUB_STATUS_CACHE = GitHubStatusCache()
+
+
+async def resolve_workflow_run_status(
+    stream_id: str, run_id: str, attempt: str = "1"
+) -> dict[str, Any]:
+    """Resolve authoritative workflow run status from GitHub Actions with fallback and caching."""
+    cache_key = f"{run_id}:{attempt}"
+
+    cached = GITHUB_STATUS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    stream = LOG_BUFFER.get_stream(stream_id)
+    has_logs = stream is not None
+    request_id = stream.request_id if stream else None
+
+    if is_github_configured() and run_id.isdigit():
+        try:
+            run_resp = await github_api_request("GET", f"actions/runs/{run_id}")
+            if run_resp.status_code == 200:
+                run_data = run_resp.json()
+                gh_status = run_data.get("status")
+                gh_conclusion = run_data.get("conclusion")
+                workflow_name = run_data.get("name") or (stream.workflow if stream else "Workflow")
+                html_url = run_data.get("html_url")
+                updated_at = run_data.get("updated_at") or run_data.get("created_at")
+
+                if not request_id and workflow_name and workflow_name.startswith("cairn-demo-"):
+                    request_id = workflow_name.replace("cairn-demo-", "")
+
+                display_status = compute_display_status(gh_status, gh_conclusion)
+
+                jobs_resp = await github_api_request("GET", f"actions/runs/{run_id}/jobs")
+                jobs_list = (
+                    jobs_resp.json().get("jobs", []) if jobs_resp.status_code == 200 else []
+                )
+                progress = extract_job_step_progress(jobs_list)
+
+                ttl = 120.0 if (gh_status or "").lower() == "completed" else 4.0
+
+                result = {
+                    "stream_id": stream_id,
+                    "run_id": run_id,
+                    "attempt": attempt,
+                    "workflow_name": workflow_name,
+                    "display_status": display_status,
+                    "status": gh_status,
+                    "conclusion": gh_conclusion,
+                    "current_job": progress["current_job"],
+                    "current_step": progress["current_step"],
+                    "steps_completed": progress["steps_completed"],
+                    "steps_total": progress["steps_total"],
+                    "progress_pct": progress["progress_pct"],
+                    "updated_at": updated_at,
+                    "html_url": html_url,
+                    "request_id": request_id,
+                    "has_logs": has_logs,
+                    "github_available": True,
+                    "is_stale": False,
+                }
+                GITHUB_STATUS_CACHE.set(cache_key, result, ttl)
+                return result
+        except Exception as exc:
+            logger.warning(f"Failed to fetch GitHub status for run {run_id}: {exc}")
+
+        stale = GITHUB_STATUS_CACHE.get_stale(cache_key)
+        if stale is not None:
+            stale_copy = dict(stale)
+            stale_copy["is_stale"] = True
+            stale_copy["github_available"] = False
+            return stale_copy
+
+    updated_at_iso = None
+    if stream:
+        updated_at_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stream.updated_at))
+
+    return {
+        "stream_id": stream_id,
+        "run_id": run_id,
+        "attempt": attempt,
+        "workflow_name": stream.workflow if stream else "Workflow",
+        "display_status": "UNKNOWN",
+        "status": "unknown",
+        "conclusion": None,
+        "current_job": stream.job if stream else None,
+        "current_step": None,
+        "steps_completed": 0,
+        "steps_total": 0,
+        "progress_pct": 0,
+        "updated_at": updated_at_iso,
+        "html_url": None,
+        "request_id": request_id,
+        "has_logs": has_logs,
+        "github_available": False,
+        "is_stale": False,
+        "message": "GitHub API data unavailable; status is UNKNOWN.",
+    }
+
+
 # --- API Routes ---
 
 
@@ -790,6 +1020,10 @@ async def list_workflows() -> dict[str, Any]:
                         req_id = name.replace("cairn-demo-", "")
 
                     has_logs = bool(LOG_BUFFER.get_stream(stream_id) is not None)
+                    gh_status = r.get("status")
+                    gh_conclusion = r.get("conclusion")
+                    display_status = compute_display_status(gh_status, gh_conclusion)
+
                     workflows.append(
                         {
                             "name": name,
@@ -797,8 +1031,9 @@ async def list_workflows() -> dict[str, Any]:
                             "run_id": r.get("id"),
                             "run_attempt": r.get("run_attempt", 1),
                             "stream_id": stream_id,
-                            "status": r.get("status"),
-                            "conclusion": r.get("conclusion"),
+                            "status": gh_status,
+                            "conclusion": gh_conclusion,
+                            "display_status": display_status,
                             "branch": r.get("head_branch"),
                             "commit_sha": (r.get("head_sha") or "")[:7],
                             "event": r.get("event"),
@@ -824,8 +1059,9 @@ async def list_workflows() -> dict[str, Any]:
                     "run_id": st.get("run_id"),
                     "run_attempt": st.get("attempt", 1),
                     "stream_id": s_id,
-                    "status": "completed",
-                    "conclusion": "success",
+                    "status": "unknown",
+                    "conclusion": None,
+                    "display_status": "UNKNOWN",
                     "branch": "main",
                     "commit_sha": "",
                     "event": "workflow_dispatch",
@@ -844,6 +1080,27 @@ async def list_workflows() -> dict[str, Any]:
     return {"workflows": workflows}
 
 
+@app.get("/api/workflows/{stream_id}/status")
+async def get_workflow_status(stream_id: str) -> dict[str, Any]:
+    """Retrieve verified GitHub Actions workflow run, job, and step status."""
+    if not VALID_STREAM_ID_REGEX.match(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream ID format.")
+
+    run_id = stream_id
+    attempt = "1"
+    if "-attempt-" in stream_id:
+        parts = stream_id.split("-attempt-")
+        run_id = parts[0]
+        attempt = parts[1]
+    else:
+        stream = LOG_BUFFER.get_stream(stream_id)
+        if stream:
+            run_id = str(stream.run_id)
+            attempt = str(stream.attempt)
+
+    return await resolve_workflow_run_status(stream_id, run_id, attempt)
+
+
 @app.get("/api/workflows/{stream_id}/logs")
 async def get_workflow_logs(stream_id: str, after: int = 0, limit: int = 500) -> dict[str, Any]:
     """Retrieve incremental live log lines after a cursor sequence number."""
@@ -856,6 +1113,11 @@ async def get_workflow_logs(stream_id: str, after: int = 0, limit: int = 500) ->
     )
 
     if stream is not None:
+        run_id = str(stream.run_id)
+        attempt = str(stream.attempt)
+        status_info = await resolve_workflow_run_status(stream_id, run_id, attempt)
+        workflow_status = status_info.get("display_status", "UNKNOWN").lower()
+
         return {
             "stream_id": stream_id,
             "run_id": stream.run_id,
@@ -865,18 +1127,23 @@ async def get_workflow_logs(stream_id: str, after: int = 0, limit: int = 500) ->
             "lines": chunk,
             "next_cursor": next_cursor,
             "has_more": has_more,
-            "workflow_status": "in_progress",
+            "workflow_status": workflow_status,
             "message": None,
         }
 
     # If stream has no lines in memory yet, check if it exists on GitHub
-    if "-" in stream_id:
+    if "-" in stream_id or stream_id.isdigit():
+        run_id = stream_id.split("-attempt-")[0] if "-attempt-" in stream_id else stream_id
+        attempt = stream_id.split("-attempt-")[1] if "-attempt-" in stream_id else "1"
+        status_info = await resolve_workflow_run_status(stream_id, run_id, attempt)
+        workflow_status = status_info.get("display_status", "UNKNOWN").lower()
+
         return {
             "stream_id": stream_id,
             "lines": [],
             "next_cursor": 0,
             "has_more": False,
-            "workflow_status": "unknown",
+            "workflow_status": workflow_status,
             "message": "No live log output received for this workflow run yet.",
         }
 

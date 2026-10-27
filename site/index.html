@@ -132,6 +132,107 @@
     }
     .workflow-select:focus { border-color: var(--cyan); }
 
+    /* Workflow Progress Panel */
+    .progress-panel {
+      background: rgba(12, 27, 45, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .panel-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .panel-tag {
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      color: var(--muted);
+      text-transform: uppercase;
+      background: rgba(25, 52, 82, .6);
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(133, 186, 219, .15);
+    }
+    .panel-workflow-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .panel-status-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      padding: 10px 0;
+      border-top: 1px solid rgba(27, 56, 81, .5);
+      border-bottom: 1px solid rgba(27, 56, 81, .5);
+    }
+    .panel-metric {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .metric-label {
+      font-size: .74rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .metric-value {
+      font-size: .88rem;
+      font-weight: 600;
+      color: #e2effd;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .progress-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .progress-bar-track {
+      flex: 1;
+      height: 8px;
+      background: #06111e;
+      border: 1px solid #1a3952;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #2b9d99, var(--cyan));
+      border-radius: 99px;
+      transition: width .3s ease;
+      box-shadow: 0 0 8px var(--cyan-glow);
+    }
+    .progress-percent {
+      font-size: .8rem;
+      font-weight: 700;
+      color: var(--cyan);
+      min-width: 40px;
+      text-align: right;
+    }
+
     /* Terminal Console */
     .terminal-container {
       background: var(--term-bg);
@@ -170,10 +271,15 @@
     .pill {
       padding: 3px 8px; border-radius: 6px; font-size: .75rem; font-weight: 700;
       background: #11283d; color: var(--cyan); text-transform: uppercase; letter-spacing: .06em;
+      border: 1px solid rgba(98, 231, 226, .2);
     }
-    .pill.in_progress { background: rgba(98, 231, 226, .15); color: var(--cyan); }
-    .pill.completed { background: rgba(121, 226, 179, .15); color: var(--green); }
-    .pill.failed { background: rgba(255, 142, 145, .15); color: var(--red); }
+    .pill.running, .pill.in_progress { background: rgba(98, 231, 226, .15); color: var(--cyan); border-color: rgba(98, 231, 226, .35); }
+    .pill.success, .pill.completed { background: rgba(121, 226, 179, .15); color: var(--green); border-color: rgba(121, 226, 179, .35); }
+    .pill.failed, .pill.failure { background: rgba(255, 142, 145, .15); color: var(--red); border-color: rgba(255, 142, 145, .35); }
+    .pill.cancelled, .pill.canceled { background: rgba(159, 179, 200, .15); color: var(--muted); border-color: rgba(159, 179, 200, .3); }
+    .pill.queued { background: rgba(255, 213, 138, .15); color: var(--amber); border-color: rgba(255, 213, 138, .35); }
+    .pill.unknown, .pill.idle { background: rgba(159, 179, 200, .1); color: #839bb2; border-color: rgba(159, 179, 200, .2); }
+    .stale-pill { background: rgba(255, 213, 138, .1); color: var(--amber); border: 1px solid rgba(255, 213, 138, .25); font-size: .7rem; }
 
     .terminal-actions { display: flex; align-items: center; gap: 8px; }
     .btn-icon {
@@ -281,7 +387,7 @@
       <div class="eyebrow"><span class="dot pulsing"></span> Real-Time Output Stream</div>
       <h1>CAIRN — <span>Live Security Testing</span></h1>
       <p class="lead">
-        Run security benchmarks and watch their actual GitHub Actions output in real time.
+        Run CAIRN security benchmarks.
       </p>
     </section>
 
@@ -292,7 +398,7 @@
       <div class="controls-left">
         <button id="runDemoBtn" class="btn primary" onclick="dispatchDemo()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <span id="runDemoBtnText">Run Live Demo</span>
+          <span id="runDemoBtnText">Run</span>
         </button>
 
         <label class="selector-label" for="workflowSelect">Stream:</label>
@@ -311,6 +417,46 @@
         <a id="githubRunLink" class="btn" href="#" target="_blank" style="display: none;">
           View in GitHub ↗
         </a>
+      </div>
+    </div>
+
+    <!-- Compact Workflow Progress / Status Panel -->
+    <div id="workflowProgressPanel" class="progress-panel">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <span class="panel-tag">WORKFLOW STATUS</span>
+          <h3 id="panelWorkflowName" class="panel-workflow-name">No Workflow Selected</h3>
+        </div>
+        <div class="panel-status-wrap">
+          <span id="panelStatusBadge" class="pill idle">IDLE</span>
+          <span id="panelStaleBadge" class="pill stale-pill" style="display: none;">STALE</span>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel-metric">
+          <span class="metric-label">Current Job</span>
+          <span id="panelCurrentJob" class="metric-value">—</span>
+        </div>
+        <div class="panel-metric">
+          <span class="metric-label">Current Step</span>
+          <span id="panelCurrentStep" class="metric-value">—</span>
+        </div>
+        <div class="panel-metric">
+          <span class="metric-label">Steps Completed</span>
+          <span id="panelStepsCount" class="metric-value">—</span>
+        </div>
+        <div class="panel-metric">
+          <span class="metric-label">Last Updated</span>
+          <span id="panelLastUpdated" class="metric-value">—</span>
+        </div>
+      </div>
+
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-track">
+          <div id="panelProgressBar" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+        <span id="panelProgressPercent" class="progress-percent">0%</span>
       </div>
     </div>
 
@@ -345,7 +491,7 @@
             <polyline points="4 17 10 11 4 5"></polyline>
             <line x1="12" y1="19" x2="20" y2="19"></line>
           </svg>
-          <p>No workflow run selected. Click <strong>Run Live Demo</strong> or select a recent run from the stream selector.</p>
+          <p>No workflow run selected. Click <strong>Run</strong> or select a recent run from the stream selector.</p>
         </div>
         <div id="terminalLines" style="display: none;"></div>
       </div>
@@ -362,22 +508,43 @@
 
 <script>
   let currentStreamId = null;
-  let currentRunId = null;
+  let currentWorkflowStatus = 'IDLE';
   let logCursor = 0;
   let logPollTimer = null;
-  let statusPollTimer = null;
+  let statusRefreshTimer = null;
+  let systemStatusTimer = null;
+  let isRefreshingStatus = false;
+  let isPollingLogs = false;
+  let consecutiveEmptyPulls = 0;
   let workflowsList = [];
   let isTrackingDispatched = false;
   let trackedJobId = null;
-  let seenSequences = new Set();
+  const seenSequences = new Set();
   let capturedLogTexts = [];
 
   // --- Initialize ---
   window.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     loadWorkflows();
-    statusPollTimer = setInterval(checkStatus, 10000);
+
+    // Separate background timers
+    if (systemStatusTimer) clearInterval(systemStatusTimer);
+    systemStatusTimer = setInterval(checkStatus, 10000);
+
+    if (statusRefreshTimer) clearInterval(statusRefreshTimer);
+    statusRefreshTimer = setInterval(refreshWorkflowStatus, 6000);
   });
+
+  function formatTime(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' UTC';
+    } catch (_) {
+      return isoStr;
+    }
+  }
 
   // --- System Status Check ---
   async function checkStatus() {
@@ -387,9 +554,14 @@
       const data = await res.json();
 
       const btn = document.getElementById('runDemoBtn');
+      const btnText = document.getElementById('runDemoBtnText');
       const dot = document.getElementById('headerDot');
       const text = document.getElementById('headerStatusText');
       const badge = document.getElementById('headerStatus');
+
+      if (!isTrackingDispatched) {
+        btnText.textContent = 'Run';
+      }
 
       if (!data.github_configured) {
         badge.className = 'status-badge';
@@ -419,10 +591,131 @@
       badge.className = 'status-badge ready';
       dot.className = 'dot';
       text.textContent = 'GitHub Runner Ready';
-      btn.disabled = false;
+      if (!isTrackingDispatched) {
+        btn.disabled = false;
+      }
       btn.title = 'Dispatch real benchmark execution on GitHub Actions';
     } catch (err) {
       console.warn('Status check error:', err);
+    }
+  }
+
+  // --- Workflow Progress & Status Synchronization ---
+  async function refreshWorkflowStatus() {
+    if (isRefreshingStatus) return;
+    isRefreshingStatus = true;
+    try {
+      await loadWorkflows(currentStreamId);
+      if (currentStreamId) {
+        await fetchAndRenderWorkflowStatus(currentStreamId);
+      }
+    } catch (err) {
+      console.warn('Status refresh error:', err);
+    } finally {
+      isRefreshingStatus = false;
+    }
+  }
+
+  async function fetchAndRenderWorkflowStatus(streamId) {
+    if (!streamId) return;
+    try {
+      const res = await fetch(`/api/workflows/${encodeURIComponent(streamId)}/status`);
+      if (!res.ok) {
+        const staleBadge = document.getElementById('panelStaleBadge');
+        staleBadge.style.display = 'inline-block';
+        staleBadge.textContent = 'SYNC ERROR';
+        return;
+      }
+      const data = await res.json();
+      currentWorkflowStatus = (data.display_status || 'UNKNOWN').toUpperCase();
+      updateProgressPanel(data);
+      updateTerminalHeader(data);
+    } catch (err) {
+      console.warn('Failed to fetch stream status:', err);
+      const staleBadge = document.getElementById('panelStaleBadge');
+      staleBadge.style.display = 'inline-block';
+      staleBadge.textContent = 'OFFLINE';
+    }
+  }
+
+  function updateProgressPanel(data) {
+    const nameEl = document.getElementById('panelWorkflowName');
+    const badgeEl = document.getElementById('panelStatusBadge');
+    const staleEl = document.getElementById('panelStaleBadge');
+    const jobEl = document.getElementById('panelCurrentJob');
+    const stepEl = document.getElementById('panelCurrentStep');
+    const stepsCountEl = document.getElementById('panelStepsCount');
+    const barEl = document.getElementById('panelProgressBar');
+    const pctEl = document.getElementById('panelProgressPercent');
+    const updatedEl = document.getElementById('panelLastUpdated');
+
+    const displayStatus = (data.display_status || 'UNKNOWN').toUpperCase();
+
+    nameEl.textContent = data.workflow_name || 'Workflow Run';
+    badgeEl.textContent = displayStatus;
+    badgeEl.className = 'pill ' + displayStatus.toLowerCase();
+
+    if (data.is_stale || !data.github_available) {
+      staleEl.style.display = 'inline-block';
+      staleEl.textContent = data.is_stale ? 'STALE' : 'UNAVAILABLE';
+    } else {
+      staleEl.style.display = 'none';
+    }
+
+    jobEl.textContent = data.current_job || '—';
+
+    if (displayStatus === 'SUCCESS' || displayStatus === 'COMPLETED') {
+      stepEl.textContent = data.current_step || 'All steps completed';
+    } else {
+      stepEl.textContent = data.current_step || '—';
+    }
+
+    if (data.steps_total > 0) {
+      stepsCountEl.textContent = `${data.steps_completed} / ${data.steps_total}`;
+    } else {
+      stepsCountEl.textContent = '—';
+    }
+
+    const pct = Math.max(0, Math.min(100, data.progress_pct || 0));
+    barEl.style.width = `${pct}%`;
+    pctEl.textContent = `${pct}%`;
+
+    updatedEl.textContent = data.updated_at ? formatTime(data.updated_at) : '—';
+  }
+
+  function updateTerminalHeader(data) {
+    const statusPill = document.getElementById('terminalStatusPill');
+    const stepPill = document.getElementById('terminalStepPill');
+    const ghLink = document.getElementById('githubRunLink');
+    const displayStatus = (data.display_status || 'UNKNOWN').toUpperCase();
+
+    statusPill.textContent = displayStatus;
+    statusPill.className = 'pill ' + displayStatus.toLowerCase();
+
+    if (data.current_step && (displayStatus === 'RUNNING' || displayStatus === 'IN_PROGRESS' || displayStatus === 'QUEUED')) {
+      stepPill.textContent = data.current_step;
+      stepPill.style.display = 'inline-block';
+    } else if (displayStatus === 'SUCCESS' || displayStatus === 'COMPLETED') {
+      stepPill.textContent = 'Completed';
+      stepPill.style.display = 'inline-block';
+    } else if (displayStatus === 'FAILED') {
+      stepPill.textContent = 'Failed';
+      stepPill.style.display = 'inline-block';
+    } else {
+      stepPill.style.display = 'none';
+    }
+
+    if (data.html_url) {
+      ghLink.href = data.html_url;
+      ghLink.style.display = 'inline-flex';
+    } else {
+      ghLink.style.display = 'none';
+    }
+
+    if (data.request_id) {
+      setupArtifactButtons(data.request_id);
+    } else {
+      hideArtifactButtons();
     }
   }
 
@@ -435,6 +728,7 @@
       workflowsList = data.workflows || [];
 
       const select = document.getElementById('workflowSelect');
+      const previousValue = currentStreamId || select.value;
       select.innerHTML = '';
 
       if (workflowsList.length === 0) {
@@ -446,24 +740,24 @@
       workflowsList.forEach(wf => {
         const opt = document.createElement('option');
         opt.value = wf.stream_id;
-        const icon = wf.status === 'in_progress' ? '● ' : (wf.conclusion === 'success' ? '✓ ' : (wf.conclusion === 'failure' ? '✗ ' : '○ '));
+        const stat = (wf.display_status || wf.status || 'unknown').toUpperCase();
+        const icon = (stat === 'RUNNING' || stat === 'IN_PROGRESS') ? '● ' : ((stat === 'SUCCESS' || stat === 'COMPLETED') ? '✓ ' : (stat === 'FAILED' ? '✗ ' : '○ '));
         const branchInfo = wf.branch ? ` (${wf.branch})` : '';
         const runIdShort = wf.run_id ? ` #${wf.run_id}` : '';
-        opt.textContent = `${icon}${wf.name}${runIdShort}${branchInfo} [${wf.status || 'unknown'}]`;
+        opt.textContent = `${icon}${wf.name}${runIdShort}${branchInfo} [${stat}]`;
 
-        if (autoSelectStreamId && wf.stream_id === autoSelectStreamId) {
-          opt.selected = true;
-          selectedFound = true;
-        } else if (!autoSelectStreamId && !selectedFound && (wf.has_logs || wf.status === 'in_progress')) {
+        const targetSelectId = autoSelectStreamId || previousValue;
+        if (targetSelectId && wf.stream_id === targetSelectId) {
           opt.selected = true;
           selectedFound = true;
         }
         select.appendChild(opt);
       });
 
-      if (!currentStreamId && select.value) {
+      if (!currentStreamId && select.options.length > 0) {
+        select.options[0].selected = true;
         switchStream(select.value);
-      } else if (autoSelectStreamId && selectedFound) {
+      } else if (autoSelectStreamId && selectedFound && currentStreamId !== autoSelectStreamId) {
         switchStream(autoSelectStreamId);
       }
     } catch (err) {
@@ -473,7 +767,7 @@
 
   function onSelectWorkflow() {
     const select = document.getElementById('workflowSelect');
-    if (select.value) {
+    if (select.value && select.value !== currentStreamId) {
       switchStream(select.value);
     }
   }
@@ -486,52 +780,35 @@
     }
 
     currentStreamId = streamId;
+    currentWorkflowStatus = 'IDLE';
     logCursor = 0;
+    consecutiveEmptyPulls = 0;
     seenSequences.clear();
     capturedLogTexts = [];
 
-    // Clear UI
+    // Clear UI without clearing other workflows
     document.getElementById('terminalLines').innerHTML = '';
     document.getElementById('terminalLines').style.display = 'block';
     document.getElementById('terminalEmpty').style.display = 'none';
     document.getElementById('logCountMeta').textContent = '0 lines';
 
-    // Update metadata from workflow list
-    const wf = workflowsList.find(w => w.stream_id === streamId);
     const titleText = document.getElementById('terminalTitleText');
-    const statusPill = document.getElementById('terminalStatusPill');
-    const ghLink = document.getElementById('githubRunLink');
-
+    const wf = workflowsList.find(w => w.stream_id === streamId);
     if (wf) {
       titleText.textContent = `${wf.name} (${wf.stream_id})`;
-      statusPill.textContent = (wf.status || 'IDLE').toUpperCase();
-      statusPill.className = 'pill ' + (wf.status || '');
-      if (wf.html_url) {
-        ghLink.href = wf.html_url;
-        ghLink.style.display = 'inline-flex';
-      } else {
-        ghLink.style.display = 'none';
-      }
-
-      if (wf.request_id) {
-        setupArtifactButtons(wf.request_id);
-      } else {
-        hideArtifactButtons();
-      }
     } else {
       titleText.textContent = `Stream: ${streamId}`;
-      statusPill.textContent = 'STREAMING';
-      statusPill.className = 'pill in_progress';
-      ghLink.style.display = 'none';
     }
 
-    // Initial fetch and start polling loop
+    // Immediately fetch real status from GitHub and poll logs
+    fetchAndRenderWorkflowStatus(streamId);
     pollStreamLogs();
     logPollTimer = setInterval(pollStreamLogs, 1000);
   }
 
   async function pollStreamLogs() {
-    if (!currentStreamId) return;
+    if (!currentStreamId || isPollingLogs) return;
+    isPollingLogs = true;
 
     try {
       const res = await fetch(`/api/workflows/${encodeURIComponent(currentStreamId)}/logs?after=${logCursor}&limit=500`);
@@ -543,33 +820,26 @@
       }
 
       const data = await res.json();
-      const statusPill = document.getElementById('terminalStatusPill');
-      const stepPill = document.getElementById('terminalStepPill');
-
-      if (data.workflow_status) {
-        statusPill.textContent = data.workflow_status.toUpperCase();
-        statusPill.className = 'pill ' + data.workflow_status;
-      }
-
-      if (data.step) {
-        stepPill.textContent = data.step;
-        stepPill.style.display = 'inline-block';
-      }
-
       const lines = data.lines || [];
+
       if (lines.length > 0) {
         appendLogLines(lines);
         logCursor = data.next_cursor || logCursor;
-      } else if (capturedLogTexts.length === 0) {
-        if (data.message) {
-          showEmptyState(data.message);
-        } else {
-          showEmptyState('Waiting for the first log lines from runner...');
+        consecutiveEmptyPulls = 0;
+      } else {
+        consecutiveEmptyPulls++;
+        if (capturedLogTexts.length === 0) {
+          if (data.message) {
+            showEmptyState(data.message);
+          } else {
+            showEmptyState('Waiting for the first log lines from runner...');
+          }
         }
       }
 
-      // If workflow completed and no new lines arrived, slow down polling
-      if (data.workflow_status === 'completed' && lines.length === 0) {
+      // Convergence: if workflow reached terminal state and all pending logs arrived
+      const isDone = ['SUCCESS', 'COMPLETED', 'FAILED', 'CANCELLED', 'TIMED_OUT'].includes(currentWorkflowStatus);
+      if (isDone && lines.length === 0 && !data.has_more && consecutiveEmptyPulls >= 2) {
         if (logPollTimer) {
           clearInterval(logPollTimer);
           logPollTimer = null;
@@ -577,6 +847,8 @@
       }
     } catch (err) {
       console.warn('Log poll error:', err);
+    } finally {
+      isPollingLogs = false;
     }
   }
 
@@ -588,7 +860,6 @@
     emptyNotice.style.display = 'none';
     linesContainer.style.display = 'block';
 
-    // Auto-scroll check: is user near bottom?
     const isAtBottom = (termBody.scrollHeight - termBody.clientHeight - termBody.scrollTop) <= 45;
 
     lines.forEach(item => {
@@ -687,12 +958,12 @@
       trackedJobId = data.job_id;
       isTrackingDispatched = true;
 
-      // Poll until GitHub run is visible
       pollForDispatchedRun(data.job_id);
     } catch (err) {
       showBanner('Could not start benchmark: ' + err.message, 'error');
       btn.disabled = false;
-      btnText.textContent = 'Run Live Demo';
+      btnText.textContent = 'Run';
+      isTrackingDispatched = false;
     }
   }
 
@@ -709,6 +980,7 @@
             showBanner(`Run #${job.github_run_id} allocated! Streaming live command output...`, 'success', 5000);
             await loadWorkflows(job.stream_id);
             setupArtifactButtons(jobId);
+            isTrackingDispatched = false;
             return;
           }
         }
@@ -720,6 +992,7 @@
         clearInterval(checkInterval);
         showBanner('Run dispatched. Refresh stream selector to view logs once runner starts.', 'warn');
         loadWorkflows();
+        isTrackingDispatched = false;
       }
     }, 2000);
   }
